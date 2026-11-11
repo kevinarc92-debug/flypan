@@ -1,0 +1,1287 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>双人汉字飞盘射击 - MVP (含 Joy-Con 60Hz IMU 完整驱动)</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+        }
+        body, html {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #0f172a;
+            font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+        }
+        canvas {
+            display: block;
+            cursor: none; /* 游戏区域内隐藏原生鼠标，使用自定义准星 */
+        }
+
+        /* 顶部右侧快捷栏 */
+        #ui-bar {
+            position: absolute;
+            top: 16px;
+            right: 20px;
+            z-index: 10;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        /* 左上角可折叠设置面板容器 */
+        #settings-wrapper {
+            position: absolute;
+            top: 16px;
+            left: 20px;
+            z-index: 20;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            cursor: default;
+        }
+
+        .btn {
+            background: rgba(30, 41, 59, 0.88);
+            color: #e2e8f0;
+            border: 1px solid #475569;
+            padding: 8px 14px;
+            border-radius: 6px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s;
+            backdrop-filter: blur(6px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+        }
+        .btn:hover {
+            background: #334155;
+            border-color: #94a3b8;
+            color: #ffffff;
+        }
+        .btn-primary {
+            background: #0284c7;
+            border-color: #38bdf8;
+            color: #ffffff;
+            font-weight: bold;
+            width: 100%;
+            padding: 9px 0;
+            margin-top: 6px;
+        }
+        .btn-primary:hover {
+            background: #0369a1;
+            border-color: #7dd3fc;
+        }
+
+        /* 设置面板主体 */
+        #settings-panel {
+            margin-top: 8px;
+            width: 350px;
+            max-height: calc(100vh - 80px);
+            overflow-y: auto;
+            background: rgba(15, 23, 42, 0.94);
+            border: 1px solid #334155;
+            border-radius: 10px;
+            padding: 16px;
+            color: #f8fafc;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+            transition: opacity 0.2s ease, transform 0.2s ease;
+            transform-origin: top left;
+        }
+        #settings-panel.collapsed {
+            display: none;
+        }
+
+        .panel-section-title {
+            font-size: 13px;
+            font-weight: bold;
+            color: #38bdf8;
+            margin-bottom: 10px;
+            padding-bottom: 4px;
+            border-bottom: 1px solid #1e293b;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .control-group {
+            margin-bottom: 11px;
+        }
+        .control-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: #cbd5e1;
+            margin-bottom: 4px;
+        }
+        .control-val {
+            color: #fef08a;
+            font-family: monospace;
+            font-weight: bold;
+        }
+        input[type="range"] {
+            width: 100%;
+            accent-color: #38bdf8;
+            cursor: pointer;
+        }
+
+        .checkbox-row {
+            display: flex;
+            gap: 14px;
+            font-size: 12px;
+            color: #cbd5e1;
+            margin-top: 6px;
+        }
+        .checkbox-row label {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            cursor: pointer;
+        }
+
+        /* 预设切换按钮组 */
+        .preset-group {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 12px;
+        }
+        .preset-btn {
+            flex: 1;
+            background: #1e293b;
+            color: #cbd5e1;
+            border: 1px solid #334155;
+            padding: 6px 0;
+            border-radius: 5px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .preset-btn:hover {
+            background: #334155;
+            color: #fff;
+        }
+        .preset-btn.active {
+            background: rgba(234, 179, 8, 0.18);
+            border-color: #eab308;
+            color: #fef08a;
+            font-weight: bold;
+        }
+
+        /* 题库文本输入框 */
+        .input-text, .input-textarea {
+            width: 100%;
+            background: #090d16;
+            border: 1px solid #334155;
+            color: #f8fafc;
+            border-radius: 5px;
+            padding: 7px 9px;
+            font-size: 12px;
+            font-family: 'PingFang SC', 'Microsoft YaHei', monospace;
+            user-select: text;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .input-text:focus, .input-textarea:focus {
+            border-color: #38bdf8;
+        }
+        .input-textarea {
+            resize: vertical;
+            min-height: 52px;
+            line-height: 1.4;
+        }
+
+        .controls-hint {
+            position: absolute;
+            bottom: 12px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #64748b;
+            font-size: 12px;
+            pointer-events: none;
+            letter-spacing: 0.4px;
+            white-space: nowrap;
+        }
+    </style>
+</head>
+<body>
+
+<!-- 左上角：可折叠设置与题库面板 -->
+<div id="settings-wrapper">
+    <button id="btn-toggle-settings" class="btn">⚙️ 设置</button>
+    
+    <div id="settings-panel" class="collapsed">
+        <!-- 物理参数控制区 -->
+        <div class="panel-section-title">
+            <span>🚀 物理参数实时控制</span>
+        </div>
+
+        <div class="control-group">
+            <div class="control-label">
+                <span>飞行速度倍率 (初速度)</span>
+                <span id="val-speed" class="control-val">1.0x</span>
+            </div>
+            <input type="range" id="slider-speed" min="0.4" max="1.8" step="0.1" value="1.0">
+        </div>
+
+        <div class="control-group">
+            <div class="control-label">
+                <span>顶点滞空阻尼 (减速程度)</span>
+                <span id="val-damping" class="control-val">65%</span>
+            </div>
+            <input type="range" id="slider-damping" min="0.0" max="0.9" step="0.05" value="0.65">
+        </div>
+
+        <div class="control-group">
+            <div class="control-label">
+                <span>飞盘发射间隔</span>
+                <span id="val-interval" class="control-val">1.5s</span>
+            </div>
+            <input type="range" id="slider-interval" min="1.0" max="4.0" step="0.1" value="1.5">
+        </div>
+
+        <!-- Joy-Con 体感校准控制区 -->
+        <div class="panel-section-title" style="margin-top: 14px;">
+            <span>🎮 Joy-Con 陀螺仪体感调节</span>
+        </div>
+
+        <div class="control-group">
+            <div class="control-label">
+                <span>体感准星灵敏度</span>
+                <span id="val-gyro-sens" class="control-val">0.015</span>
+            </div>
+            <input type="range" id="slider-gyro-sens" min="0.004" max="0.040" step="0.002" value="0.015">
+            <div class="checkbox-row">
+                <label><input type="checkbox" id="chk-invert-x"> 反转水平 X 轴</label>
+                <label><input type="checkbox" id="chk-invert-y"> 反转垂直 Y 轴</label>
+            </div>
+        </div>
+
+        <!-- 动态题库系统区 -->
+        <div class="panel-section-title" style="margin-top: 14px;">
+            <span>📚 动态题库系统</span>
+        </div>
+
+        <div class="control-label"><span>预置电脑默认关卡：</span></div>
+        <div class="preset-group">
+            <button class="preset-btn active" data-preset="0">关卡1【电】</button>
+            <button class="preset-btn" data-preset="1">关卡2【水】</button>
+            <button class="preset-btn" data-preset="2">关卡3【机】</button>
+        </div>
+
+        <div class="control-group">
+            <div class="control-label"><span>当前词根 (母字)：</span></div>
+            <input type="text" id="input-base" class="input-text" maxlength="2" placeholder="如：电">
+        </div>
+
+        <div class="control-group">
+            <div class="control-label"><span>有效词映射 (格式 字:完整词，逗号分隔)：</span></div>
+            <textarea id="input-valid" class="input-textarea" placeholder="脑:电脑, 话:电话, 影:电影"></textarea>
+        </div>
+
+        <div class="control-group">
+            <div class="control-label"><span>干扰字池 (逗号或空格分隔)：</span></div>
+            <textarea id="input-invalid" class="input-textarea" style="min-height: 42px;" placeholder="鱼, 木, 水, 草, 石, 狗"></textarea>
+        </div>
+
+        <button id="btn-apply-wordbank" class="btn btn-primary">✨ 应用题库并清屏</button>
+    </div>
+</div>
+
+<!-- 右上角：硬件与快捷切换 -->
+<div id="ui-bar">
+    <button id="btn-joycon" class="btn">🎮 连接 Joy-Con (WebHID)</button>
+    <button id="btn-word" class="btn">🔄 切换预置关卡</button>
+</div>
+
+<div class="controls-hint">
+    【Joy-Con】ZR/ZL开火，按压摇杆/Home/截图键一键归中 &nbsp;|&nbsp; 【键鼠兜底】P1:鼠标+左键 / P2:WASD+空格
+</div>
+
+<canvas id="gameCanvas"></canvas>
+
+<script>
+/**
+ * ==========================================
+ * 1. 物理、体感配置与预置 3 套默认题库
+ * ==========================================
+ */
+const CONFIG = {
+    speedScale: 1.0,        // 飞行速度倍率 (0.4x ~ 1.8x)
+    apexDamping: 0.65,      // 顶点滞空阻尼 (0 ~ 0.90)
+    spawnInterval: 1.5,     // 飞盘发射间隔 (1.0s ~ 4.0s)
+    gyroSensitivity: 0.015, // Joy-Con 陀螺仪积分灵敏度
+    gyroDeadzone: 12,       // 陀螺仪静止抗抖动盲区 (绝对值小于该值视为 0)
+    invertGyroX: false,     // 是否反转陀螺仪水平轴
+    invertGyroY: false      // 是否反转陀螺仪垂直轴
+};
+
+const PRESET_LEVELS = [
+    {
+        base: '电',
+        validRaw: '脑:电脑, 话:电话, 影:电影, 视:电视, 池:电池, 梯:电梯, 源:电源, 流:电流, 子:电子, 车:电车',
+        invalidRaw: '鱼, 木, 水, 草, 石, 狗, 羊, 鸟, 土, 米'
+    },
+    {
+        base: '水',
+        validRaw: '果:水果, 平:水平, 晶:水晶, 滴:水滴, 杯:水杯, 库:水库, 泥:水泥, 手:水手, 稻:水稻, 源:水源',
+        invalidRaw: '火, 山, 刀, 车, 日, 月, 木, 石, 布, 金'
+    },
+    {
+        base: '机',
+        validRaw: '飞:飞机, 手:手机, 器:机器, 会:机会, 司:司机, 关:机关, 密:机密, 场:机场, 智:机智, 危:危机',
+        invalidRaw: '草, 羊, 牛, 鱼, 瓜, 豆, 云, 雨, 雪, 泥'
+    }
+];
+
+let currentPresetIdx = 0;
+
+let activeWordBank = {
+    base: '电',
+    validList: [],
+    invalidList: []
+};
+
+let canvas, ctx;
+let width, height;
+
+// 实体对象池
+const frisbees = [];
+const particles = [];
+const floatingTexts = [];
+
+// 玩家状态 (P1: 玫红色, P2: 青蓝色)
+const players = [
+    {
+        id: 1, name: 'P1',
+        x: 0, y: 0,
+        color: '#f43f5e',
+        score: 0,
+        cooldown: 0,
+        maxCooldown: 2.0,
+        muzzleFlash: 0,
+        hasJoyCon: false
+    },
+    {
+        id: 2, name: 'P2',
+        x: 0, y: 0,
+        color: '#06b6d4',
+        score: 0,
+        cooldown: 0,
+        maxCooldown: 2.0,
+        muzzleFlash: 0,
+        hasJoyCon: false
+    }
+];
+
+const keys = { w: false, a: false, s: false, d: false };
+const P2_SPEED = 650;
+
+/**
+ * ==========================================
+ * 2. 题库解析与 UI 同步逻辑
+ * ==========================================
+ */
+function parseAndApplyWordBank(baseStr, validStr, invalidStr) {
+    const cleanBase = (baseStr || '').trim() || '字';
+
+    const validEntries = validStr
+        .split(/[,，\n]+/)
+        .map(s => s.trim())
+        .filter(Boolean);
+
+    const parsedValid = [];
+    for (const item of validEntries) {
+        const parts = item.split(/[:：]/).map(s => s.trim()).filter(Boolean);
+        if (parts.length >= 2) {
+            parsedValid.push({ char: parts[0][0], word: parts[1] });
+        } else if (parts.length === 1) {
+            const ch = parts[0][0];
+            parsedValid.push({ char: ch, word: cleanBase + ch });
+        }
+    }
+
+    if (parsedValid.length === 0) {
+        parsedValid.push({ char: '光', word: cleanBase + '光' });
+    }
+
+    const parsedInvalid = invalidStr
+        .split(/[,，\s\n]+/)
+        .map(s => s.trim())
+        .filter(Boolean)
+        .map(s => s[0]);
+
+    if (parsedInvalid.length === 0) {
+        parsedInvalid.push('✕');
+    }
+
+    activeWordBank = {
+        base: cleanBase,
+        validList: parsedValid,
+        invalidList: parsedInvalid
+    };
+
+    frisbees.length = 0;
+    if (width && height) {
+        floatingTexts.push(
+            new FloatingText(width / 2, 135, `✨ 已切换母字【${cleanBase}】`, '#38bdf8')
+        );
+    }
+}
+
+function loadPresetToForm(index) {
+    currentPresetIdx = index;
+    const preset = PRESET_LEVELS[index];
+
+    document.getElementById('input-base').value = preset.base;
+    document.getElementById('input-valid').value = preset.validRaw;
+    document.getElementById('input-invalid').value = preset.invalidRaw;
+
+    document.querySelectorAll('.preset-btn').forEach((btn, idx) => {
+        btn.classList.toggle('active', idx === index);
+    });
+
+    parseAndApplyWordBank(preset.base, preset.validRaw, preset.invalidRaw);
+}
+
+/**
+ * ==========================================
+ * 3. Joy-Con WebHID 完整底层驱动层 (60Hz 0x30 模式 + IMU 激活)
+ * ==========================================
+ */
+class JoyConHIDManager {
+    constructor() {
+        // 维护最多 2 个槽位: controllers[0] 对应 P1, controllers[1] 对应 P2
+        this.controllers = [null, null];
+        this.VENDOR_ID = 0x057e;
+        this.PRODUCT_ID_L = 0x2006; // Joy-Con (L)
+        this.PRODUCT_ID_R = 0x2007; // Joy-Con (R)
+        this.PRODUCT_ID_PRO = 0x2009; // Pro Controller 兼容
+
+        // 监听热插拔断开事件，自动重排槽位保证单手柄优先控制 P1
+        if ('hid' in navigator) {
+            navigator.hid.addEventListener('disconnect', (e) => {
+                this.handleDisconnect(e.device);
+            });
+        }
+    }
+
+    sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    /**
+     * 发送底层 Output Report 0x01 子命令 (Subcommand)
+     * 规范结构：[GlobalPacketCounter(1B), NeutralRumble(8B), SubcommandID(1B), ...Args]
+     */
+    async sendSubcommand(ctrl, subcommand, args = []) {
+        const packetNumber = ctrl.packetCounter & 0x0f;
+        ctrl.packetCounter = (ctrl.packetCounter + 1) & 0x0f;
+
+        // Joy-Con 标准静音振动字节 (Neutral Rumble Data)
+        const rumbleData = [0x00, 0x01, 0x40, 0x40, 0x00, 0x01, 0x40, 0x40];
+
+        // 构造 48 字节的 Payload (Output Report 0x01 标准长度)
+        const payload = new Uint8Array(48);
+        payload[0] = packetNumber;
+        payload.set(rumbleData, 1);
+        payload[9] = subcommand;
+        for (let i = 0; i < args.length; i++) {
+            payload[10 + i] = args[i];
+        }
+
+        await ctrl.device.sendReport(0x01, payload);
+    }
+
+    /**
+     * 核心握手流程：开启 IMU 陀螺仪 -> 切换 0x30 60Hz 完整报告模式 -> 点亮对应玩家 LED
+     */
+    async initializeJoyConHardware(ctrl, playerIndex) {
+        // 1. Subcommand 0x40: 开启 6 轴 IMU 传感器 (参数 0x01 = Enable)
+        await this.sendSubcommand(ctrl, 0x40, [0x01]);
+        await this.sleep(60);
+
+        // 2. Subcommand 0x03: 设置输入报告模式为 0x30 (Standard full mode @ 60Hz)
+        await this.sendSubcommand(ctrl, 0x03, [0x30]);
+        await this.sleep(60);
+
+        // 3. Subcommand 0x30: 点亮手柄侧面玩家指示灯 (P1=0x01, P2=0x03)
+        const ledMask = playerIndex === 0 ? 0x01 : 0x03;
+        await this.sendSubcommand(ctrl, 0x30, [ledMask]);
+    }
+
+    async requestConnection() {
+        if (!('hid' in navigator)) {
+            alert('当前浏览器不支持 WebHID API，请使用桌面版 Chrome 或 Edge 浏览器。');
+            return;
+        }
+
+        try {
+            const selectedDevices = await navigator.hid.requestDevice({
+                filters: [
+                    { vendorId: this.VENDOR_ID, productId: this.PRODUCT_ID_L },
+                    { vendorId: this.VENDOR_ID, productId: this.PRODUCT_ID_R },
+                    { vendorId: this.VENDOR_ID, productId: this.PRODUCT_ID_PRO }
+                ]
+            });
+
+            for (const device of selectedDevices) {
+                await this.attachDevice(device);
+            }
+        } catch (err) {
+            console.error('[WebHID] 连接设备异常:', err);
+        }
+    }
+
+    async attachDevice(device) {
+        // 避免重复绑定同一只手柄
+        if (this.controllers.some(c => c && c.device === device)) {
+            return;
+        }
+
+        // 单手柄优先分配逻辑：优先寻找空缺的 P1 (slot 0)，若 P1 已占用则分配给 P2 (slot 1)
+        let targetSlot = -1;
+        if (!this.controllers[0]) {
+            targetSlot = 0;
+        } else if (!this.controllers[1]) {
+            targetSlot = 1;
+        } else {
+            alert('已达到最大 2 只手柄连接上限！');
+            return;
+        }
+
+        if (!device.opened) {
+            await device.open();
+        }
+
+        const ctrl = {
+            device,
+            isLeft: device.productId === this.PRODUCT_ID_L,
+            packetCounter: 0,
+            lastFirePressed: false,
+            lastRecenterPressed: false,
+            listener: null
+        };
+
+        this.controllers[targetSlot] = ctrl;
+        players[targetSlot].hasJoyCon = true;
+
+        // 连接成功时将对应玩家准星居中
+        players[targetSlot].x = width / 2;
+        players[targetSlot].y = height / 2;
+
+        // 绑定 0x30 数据包监听
+        ctrl.listener = (event) => this.handleInputReport(targetSlot, ctrl, event);
+        device.addEventListener('inputreport', ctrl.listener);
+
+        // 执行底层握手包激活陀螺仪
+        await this.initializeJoyConHardware(ctrl, targetSlot);
+
+        this.updateUIButton();
+        const sideName = ctrl.isLeft ? 'Joy-Con (L)' : 'Joy-Con (R)';
+        floatingTexts.push(
+            new FloatingText(width / 2, height / 2 - 40, `🎮 ${sideName} 已接管 P${targetSlot + 1} 准星`, players[targetSlot].color)
+        );
+        console.log(`[WebHID] ${device.productName} 已成功激活 IMU 并分配至 P${targetSlot + 1}`);
+    }
+
+    handleDisconnect(device) {
+        const idx = this.controllers.findIndex(c => c && c.device === device);
+        if (idx === -1) return;
+
+        this.controllers[idx] = null;
+        players[idx].hasJoyCon = false;
+
+        // 如果 P1 手柄断开而 P2 仍连接，自动将剩余的 1 只手柄迁移到 P1，确保单手柄始终控制 P1
+        if (idx === 0 && this.controllers[1]) {
+            const remainingCtrl = this.controllers[1];
+            this.controllers[0] = remainingCtrl;
+            this.controllers[1] = null;
+            players[0].hasJoyCon = true;
+            players[1].hasJoyCon = false;
+
+            remainingCtrl.device.removeEventListener('inputreport', remainingCtrl.listener);
+            remainingCtrl.listener = (event) => this.handleInputReport(0, remainingCtrl, event);
+            remainingCtrl.device.addEventListener('inputreport', remainingCtrl.listener);
+            this.sendSubcommand(remainingCtrl, 0x30, [0x01]).catch(() => {});
+        }
+
+        this.updateUIButton();
+    }
+
+    updateUIButton() {
+        const count = this.controllers.filter(Boolean).length;
+        const btn = document.getElementById('btn-joycon');
+        if (count === 0) {
+            btn.innerText = '🎮 连接 Joy-Con (WebHID)';
+        } else if (count === 1) {
+            btn.innerText = '🎮 已连接 (1/2) [P1体感就绪] - 点击连P2';
+        } else {
+            btn.innerText = '🎮 双手柄已就绪 (2/2)';
+        }
+    }
+
+    /**
+     * 解析 0x30 标准报告：按钮判定 + 一键归中 + 陀螺仪角速度积分
+     */
+    handleInputReport(playerIndex, ctrl, event) {
+        const { data, reportId } = event;
+        if (reportId !== 0x30 || data.byteLength < 25) return;
+
+        const player = players[playerIndex];
+        if (!player) return;
+
+        // ====================================================
+        // 1. 按键状态解析 (Bytes 2, 3, 4 分别为右柄按键、共享按键、左柄按键)
+        // ====================================================
+        const rightBtns = data.getUint8(2);
+        const sharedBtns = data.getUint8(3);
+        const leftBtns = data.getUint8(4);
+
+        // 开火键：ZR (rightBtns bit 7: 0x80), R (rightBtns bit 6: 0x40), ZL (leftBtns bit 7: 0x80), L (leftBtns bit 6: 0x40)
+        const firePressed =
+            (rightBtns & 0x80) !== 0 ||
+            (rightBtns & 0x40) !== 0 ||
+            (leftBtns & 0x80) !== 0 ||
+            (leftBtns & 0x40) !== 0;
+
+        if (firePressed && !ctrl.lastFirePressed) {
+            triggerFire(playerIndex);
+        }
+        ctrl.lastFirePressed = firePressed;
+
+        // 一键归中校准键：
+        // 共享字节 Byte 3: Minus(0x01), Plus(0x02), R-Stick Click(0x04), L-Stick Click(0x08), Home(0x10), Capture(0x20)
+        const recenterPressed = (sharedBtns & 0x3f) !== 0;
+        if (recenterPressed && !ctrl.lastRecenterPressed) {
+            player.x = width / 2;
+            player.y = height / 2;
+            floatingTexts.push(
+                new FloatingText(player.x, player.y - 25, `${player.name} 准星已归中`, player.color)
+            );
+        }
+        ctrl.lastRecenterPressed = recenterPressed;
+
+        // ====================================================
+        // 2. 6轴 IMU 陀螺仪原始数据解析与角速度积分
+        // Report 0x30 包含 3 组 200Hz IMU 采样帧，首帧陀螺仪位于 Byte 18~23 (0-indexed)
+        // 即：Gyro X = Offset 18..19, Gyro Y = Offset 20..21, Gyro Z = Offset 22..23
+        // ====================================================
+        const rawGyroX = data.getInt16(18, true);
+        const rawGyroY = data.getInt16(20, true);
+        const rawGyroZ = data.getInt16(22, true);
+
+        // 抗抖动静止盲区过滤 (Deadzone)
+        const dz = CONFIG.gyroDeadzone;
+        const deltaGyroX = Math.abs(rawGyroX) < dz ? 0 : rawGyroX;
+        const deltaGyroY = Math.abs(rawGyroY) < dz ? 0 : rawGyroY;
+        const deltaGyroZ = Math.abs(rawGyroZ) < dz ? 0 : rawGyroZ;
+
+        /**
+         * 轴向正负号映射：
+         * 左柄 (Joy-Con L) 与右柄 (Joy-Con R) 内部主板上の IMU 芯片安装方向相差 180°，
+         * 因此右柄的 Y 轴（俯仰 Pitch）和 Z 轴（偏航 Yaw）天然与左柄符号相反。
+         * 默认按像激光笔一样平握指向屏幕的手势进行映射，并支持面板勾选反转：
+         */
+        const handSign = ctrl.isLeft ? 1 : -1;
+        const dirX = (CONFIG.invertGyroX ? -1 : 1) * -1; // 向右偏航时准星右移
+        const dirY = (CONFIG.invertGyroY ? -1 : 1) * handSign; // 向上抬头时准星上移
+
+        const sens = CONFIG.gyroSensitivity;
+
+        // 角速度积分累加
+        player.x += deltaGyroZ * sens * dirX;
+        player.y += deltaGyroY * sens * dirY;
+
+        // 坐标强制边缘限制在画布可视区域内
+        player.x = Math.max(0, Math.min(width, player.x));
+        player.y = Math.max(0, Math.min(height, player.y));
+    }
+}
+
+const joyconManager = new JoyConHIDManager();
+
+/**
+ * ==========================================
+ * 4. 飞盘、粒子与漂浮字实体类
+ * ==========================================
+ */
+class Frisbee {
+    constructor() {
+        this.radius = 40;
+        const fromLeft = Math.random() < 0.5;
+        this.x = fromLeft ? -this.radius : width + this.radius;
+        this.y = height - 40 - Math.random() * 80;
+
+        const apexX = width * (0.28 + Math.random() * 0.44);
+        const apexY = height * (0.18 + Math.random() * 0.25);
+
+        const baseGravity = 920;
+        const dy = this.y - apexY;
+
+        const baseVy = -Math.sqrt(2 * baseGravity * dy);
+        const baseTimeToApex = -baseVy / baseGravity;
+        const baseVx = (apexX - this.x) / baseTimeToApex;
+
+        const speedScale = CONFIG.speedScale;
+        this.speedScale = speedScale;
+
+        this.vx = baseVx * speedScale;
+        this.vy = baseVy * speedScale;
+        this.gravity = baseGravity * speedScale * speedScale;
+
+        this.isValid = Math.random() < 0.65;
+        if (this.isValid) {
+            const item = activeWordBank.validList[
+                Math.floor(Math.random() * activeWordBank.validList.length)
+            ];
+            this.char = item.char;
+            this.fullWord = item.word;
+        } else {
+            const ch = activeWordBank.invalidList[
+                Math.floor(Math.random() * activeWordBank.invalidList.length)
+            ];
+            this.char = ch;
+            this.fullWord = activeWordBank.base + ch;
+        }
+
+        this.angle = 0;
+        this.spinSpeed = (fromLeft ? 1 : -1) * (2.5 + Math.random() * 2) * speedScale;
+        this.markedForDeletion = false;
+    }
+
+    update(dt) {
+        const floatThreshold = 210 * this.speedScale;
+        let timeScale = 1.0;
+
+        if (Math.abs(this.vy) < floatThreshold) {
+            const factor = Math.abs(this.vy) / floatThreshold;
+            const minTimeScale = Math.max(0.08, 1.0 - CONFIG.apexDamping);
+            timeScale = minTimeScale + (1.0 - minTimeScale) * Math.pow(factor, 1.5);
+        }
+
+        const effectiveDt = dt * timeScale;
+
+        this.x += this.vx * effectiveDt;
+        this.y += this.vy * effectiveDt;
+        this.vy += this.gravity * effectiveDt;
+        this.angle += this.spinSpeed * effectiveDt;
+
+        if (this.y > height + this.radius + 50 && this.vy > 0) {
+            this.markedForDeletion = true;
+        }
+    }
+
+    draw(ctx) {
+        ctx.save();
+        ctx.translate(this.x, this.y);
+
+        ctx.save();
+        ctx.rotate(this.angle);
+
+        ctx.shadowColor = 'rgba(56, 189, 248, 0.25)';
+        ctx.shadowBlur = 12;
+
+        ctx.beginPath();
+        ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+        ctx.fillStyle = '#1e293b';
+        ctx.fill();
+        ctx.lineWidth = 3.5;
+        ctx.strokeStyle = '#38bdf8';
+        ctx.stroke();
+
+        ctx.strokeStyle = '#0284c7';
+        ctx.lineWidth = 2;
+        for (let i = 0; i < 4; i++) {
+            const a = (i * Math.PI) / 2;
+            ctx.beginPath();
+            ctx.moveTo(Math.cos(a) * (this.radius - 11), Math.sin(a) * (this.radius - 11));
+            ctx.lineTo(Math.cos(a) * (this.radius - 2), Math.sin(a) * (this.radius - 2));
+            ctx.stroke();
+        }
+
+        ctx.beginPath();
+        ctx.arc(0, 0, this.radius - 11, 0, Math.PI * 2);
+        ctx.fillStyle = '#0f172a';
+        ctx.fill();
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = '#334155';
+        ctx.stroke();
+        ctx.restore();
+
+        ctx.fillStyle = '#f8fafc';
+        ctx.font = 'bold 30px "PingFang SC", "Microsoft YaHei", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(this.char, 0, 2);
+
+        ctx.restore();
+    }
+}
+
+class ShardParticle {
+    constructor(x, y, color) {
+        this.x = x;
+        this.y = y;
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 90 + Math.random() * 260;
+        this.vx = Math.cos(angle) * speed;
+        this.vy = Math.sin(angle) * speed - 60;
+        this.gravity = 600;
+        this.color = color;
+        this.alpha = 1;
+        this.decay = 1.4 + Math.random() * 0.8;
+        this.rotation = Math.random() * Math.PI * 2;
+        this.rotSpeed = (Math.random() - 0.5) * 12;
+        this.size = 6 + Math.random() * 10;
+    }
+
+    update(dt) {
+        this.x += this.vx * dt;
+        this.y += this.vy * dt;
+        this.vy += this.gravity * dt;
+        this.rotation += this.rotSpeed * dt;
+        this.alpha -= this.decay * dt;
+    }
+
+    draw(ctx) {
+        if (this.alpha <= 0) return;
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, this.alpha);
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.rotation);
+        ctx.fillStyle = this.color;
+
+        ctx.beginPath();
+        ctx.moveTo(-this.size / 2, -this.size / 2);
+        ctx.lineTo(this.size / 2, 0);
+        ctx.lineTo(0, this.size / 2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+    }
+}
+
+class FloatingText {
+    constructor(x, y, text, color) {
+        this.x = x;
+        this.y = y;
+        this.text = text;
+        this.color = color;
+        this.alpha = 1.0;
+        this.vy = -55;
+    }
+
+    update(dt) {
+        this.y += this.vy * dt;
+        this.alpha -= 1.1 * dt;
+    }
+
+    draw(ctx) {
+        if (this.alpha <= 0) return;
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, this.alpha);
+        ctx.font = 'bold 22px "PingFang SC", "Microsoft YaHei", sans-serif';
+        ctx.fillStyle = this.color;
+        ctx.textAlign = 'center';
+        ctx.shadowColor = 'rgba(0,0,0,0.6)';
+        ctx.shadowBlur = 4;
+        ctx.fillText(this.text, this.x, this.y);
+        ctx.restore();
+    }
+}
+
+/**
+ * ==========================================
+ * 5. 射击判定与游戏逻辑
+ * ==========================================
+ */
+function spawnParticles(x, y, mainColor) {
+    for (let i = 0; i < 16; i++) {
+        const c = i % 2 === 0 ? mainColor : '#38bdf8';
+        particles.push(new ShardParticle(x, y, c));
+    }
+}
+
+function triggerFire(playerIndex) {
+    const p = players[playerIndex];
+    if (p.cooldown > 0) return;
+
+    p.muzzleFlash = 1.0;
+
+    for (let i = frisbees.length - 1; i >= 0; i--) {
+        const f = frisbees[i];
+        const dx = p.x - f.x;
+        const dy = p.y - f.y;
+        const dist = Math.hypot(dx, dy);
+
+        if (dist <= f.radius + 4) {
+            if (f.isValid) {
+                p.score += 100;
+                spawnParticles(f.x, f.y, p.color);
+                floatingTexts.push(
+                    new FloatingText(f.x, f.y - 10, `【${f.fullWord}】 +100`, '#4ade80')
+                );
+                frisbees.splice(i, 1);
+            } else {
+                p.cooldown = p.maxCooldown;
+                spawnParticles(f.x, f.y, '#64748b');
+                floatingTexts.push(
+                    new FloatingText(f.x, f.y - 10, `✗ 干扰词【${f.char}】 冷却!`, '#f87171')
+                );
+                frisbees.splice(i, 1);
+            }
+            break;
+        }
+    }
+}
+
+/**
+ * ==========================================
+ * 6. 渲染函数 (HUD、母字、极细十字准星)
+ * ==========================================
+ */
+function drawHUD(ctx) {
+    const centerX = width / 2;
+    const topY = 58;
+
+    ctx.save();
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '13px "PingFang SC", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('请射击能与下方母字组成合法词语的飞盘', centerX, 24);
+
+    ctx.fillStyle = '#1e293b';
+    ctx.strokeStyle = '#eab308';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.roundRect(centerX - 65, topY - 24, 130, 62, 12);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#fef08a';
+    ctx.font = 'bold 36px "PingFang SC", "Microsoft YaHei", sans-serif';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`【${activeWordBank.base}】`, centerX, topY + 8);
+    ctx.restore();
+
+    players.forEach((p, idx) => {
+        ctx.save();
+        const isLeft = idx === 0;
+        const boxX = isLeft ? 20 : width - 190;
+        const boxY = 66;
+
+        ctx.fillStyle = 'rgba(30, 41, 59, 0.75)';
+        ctx.strokeStyle = p.cooldown > 0 ? '#64748b' : p.color;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.roundRect(boxX, boxY, 170, 54, 8);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = p.cooldown > 0 ? '#94a3b8' : p.color;
+        ctx.font = 'bold 18px sans-serif';
+        ctx.textAlign = 'left';
+        const modeTag = p.hasJoyCon ? '🎮' : '';
+        ctx.fillText(`${p.name} ${modeTag}`, boxX + 14, boxY + 24);
+
+        ctx.fillStyle = '#f8fafc';
+        ctx.font = 'bold 22px monospace';
+        ctx.textAlign = 'right';
+        ctx.fillText(`${p.score}`, boxX + 156, boxY + 35);
+
+        ctx.fillStyle = '#64748b';
+        ctx.font = '12px sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(p.cooldown > 0 ? '冷却惩罚中...' : (p.hasJoyCon ? '体感已激活' : '状态: 就绪'), boxX + 14, boxY + 43);
+        ctx.restore();
+    });
+}
+
+function drawCrosshair(ctx, p) {
+    ctx.save();
+    ctx.translate(p.x, p.y);
+
+    const isCooling = p.cooldown > 0;
+    const activeColor = isCooling ? '#64748b' : p.color;
+
+    ctx.strokeStyle = activeColor;
+    ctx.lineWidth = 1;
+
+    const spread = p.muzzleFlash * 10;
+    const innerRadius = 5 + spread;
+    const outerRadius = 20 + spread;
+    const ringRadius = 12 + spread * 0.5;
+
+    ctx.beginPath();
+    ctx.arc(0, 0, ringRadius, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(-outerRadius, 0); ctx.lineTo(-innerRadius, 0);
+    ctx.moveTo(innerRadius, 0);  ctx.lineTo(outerRadius, 0);
+    ctx.moveTo(0, -outerRadius); ctx.lineTo(0, -innerRadius);
+    ctx.moveTo(0, innerRadius);  ctx.lineTo(0, outerRadius);
+    ctx.stroke();
+
+    ctx.fillStyle = activeColor;
+    ctx.beginPath();
+    ctx.arc(0, 0, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    if (isCooling) {
+        const progress = p.cooldown / p.maxCooldown;
+        ctx.strokeStyle = '#94a3b8';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(0, 0, ringRadius + 6, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress);
+        ctx.stroke();
+
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '11px monospace';
+        ctx.textAlign = 'left';
+        ctx.fillText(`${p.cooldown.toFixed(1)}s`, 16, -14);
+    } else {
+        ctx.fillStyle = activeColor;
+        ctx.font = 'bold 11px sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(p.name, 14, 18);
+    }
+
+    ctx.restore();
+}
+
+/**
+ * ==========================================
+ * 7. 主循环与交互事件初始化
+ * ==========================================
+ */
+let lastTime = 0;
+let spawnTimer = 0;
+
+function resizeCanvas() {
+    width = window.innerWidth;
+    height = window.innerHeight;
+    canvas.width = width;
+    canvas.height = height;
+}
+
+function isTypingInInput() {
+    const el = document.activeElement;
+    return el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA');
+}
+
+function initUIEvents() {
+    const settingsPanel = document.getElementById('settings-panel');
+    const toggleBtn = document.getElementById('btn-toggle-settings');
+
+    toggleBtn.addEventListener('click', () => {
+        const isCollapsed = settingsPanel.classList.toggle('collapsed');
+        toggleBtn.innerText = isCollapsed ? '⚙️ 设置' : '✖️ 收起设置';
+    });
+
+    const sliderSpeed = document.getElementById('slider-speed');
+    const valSpeed = document.getElementById('val-speed');
+    sliderSpeed.addEventListener('input', (e) => {
+        CONFIG.speedScale = parseFloat(e.target.value);
+        valSpeed.innerText = `${CONFIG.speedScale.toFixed(1)}x`;
+    });
+
+    const sliderDamping = document.getElementById('slider-damping');
+    const valDamping = document.getElementById('val-damping');
+    sliderDamping.addEventListener('input', (e) => {
+        CONFIG.apexDamping = parseFloat(e.target.value);
+        valDamping.innerText = `${Math.round(CONFIG.apexDamping * 100)}%`;
+    });
+
+    const sliderInterval = document.getElementById('slider-interval');
+    const valInterval = document.getElementById('val-interval');
+    sliderInterval.addEventListener('input', (e) => {
+        CONFIG.spawnInterval = parseFloat(e.target.value);
+        valInterval.innerText = `${CONFIG.spawnInterval.toFixed(1)}s`;
+    });
+
+    // Joy-Con 灵敏度与反转轴向绑定
+    const sliderGyroSens = document.getElementById('slider-gyro-sens');
+    const valGyroSens = document.getElementById('val-gyro-sens');
+    sliderGyroSens.addEventListener('input', (e) => {
+        CONFIG.gyroSensitivity = parseFloat(e.target.value);
+        valGyroSens.innerText = CONFIG.gyroSensitivity.toFixed(3);
+    });
+
+    document.getElementById('chk-invert-x').addEventListener('change', (e) => {
+        CONFIG.invertGyroX = e.target.checked;
+    });
+
+    document.getElementById('chk-invert-y').addEventListener('change', (e) => {
+        CONFIG.invertGyroY = e.target.checked;
+    });
+
+    document.querySelectorAll('.preset-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const idx = parseInt(btn.getAttribute('data-preset'), 10);
+            loadPresetToForm(idx);
+        });
+    });
+
+    document.getElementById('btn-apply-wordbank').addEventListener('click', () => {
+        const baseVal = document.getElementById('input-base').value;
+        const validVal = document.getElementById('input-valid').value;
+        const invalidVal = document.getElementById('input-invalid').value;
+
+        document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+        parseAndApplyWordBank(baseVal, validVal, invalidVal);
+    });
+
+    document.getElementById('btn-joycon').addEventListener('click', () => {
+        joyconManager.requestConnection();
+    });
+
+    document.getElementById('btn-word').addEventListener('click', () => {
+        const nextIdx = (currentPresetIdx + 1) % PRESET_LEVELS.length;
+        loadPresetToForm(nextIdx);
+    });
+}
+
+function init() {
+    canvas = document.getElementById('gameCanvas');
+    ctx = canvas.getContext('2d');
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    loadPresetToForm(0);
+    initUIEvents();
+
+    players[0].x = width * 0.35;
+    players[0].y = height * 0.5;
+    players[1].x = width * 0.65;
+    players[1].y = height * 0.5;
+
+    // 鼠标 + 左键开火作为 P1 的本地调试兜底
+    window.addEventListener('mousemove', (e) => {
+        players[0].x = e.clientX;
+        players[0].y = e.clientY;
+    });
+
+    window.addEventListener('mousedown', (e) => {
+        if (e.target.closest('#settings-wrapper') || e.target.closest('#ui-bar')) {
+            return;
+        }
+        if (e.button === 0) {
+            triggerFire(0);
+        }
+    });
+
+    // 键盘控制 P2 准星 (WASD移动 + 空格开火)
+    window.addEventListener('keydown', (e) => {
+        if (isTypingInInput()) return;
+
+        const k = e.key.toLowerCase();
+        if (k in keys) keys[k] = true;
+        if (e.code === 'Space' && !e.repeat) {
+            e.preventDefault();
+            triggerFire(1);
+        }
+    });
+
+    window.addEventListener('keyup', (e) => {
+        const k = e.key.toLowerCase();
+        if (k in keys) keys[k] = false;
+    });
+
+    requestAnimationFrame(gameLoop);
+}
+
+function update(dt) {
+    spawnTimer += dt;
+    if (spawnTimer >= CONFIG.spawnInterval) {
+        spawnTimer = 0;
+        frisbees.push(new Frisbee());
+        if (Math.random() < 0.3) {
+            frisbees.push(new Frisbee());
+        }
+    }
+
+    const p2 = players[1];
+    if (keys.w) p2.y -= P2_SPEED * dt;
+    if (keys.s) p2.y += P2_SPEED * dt;
+    if (keys.a) p2.x -= P2_SPEED * dt;
+    if (keys.d) p2.x += P2_SPEED * dt;
+    p2.x = Math.max(0, Math.min(width, p2.x));
+    p2.y = Math.max(0, Math.min(height, p2.y));
+
+    players.forEach(p => {
+        if (p.cooldown > 0) {
+            p.cooldown = Math.max(0, p.cooldown - dt);
+        }
+        if (p.muzzleFlash > 0) {
+            p.muzzleFlash = Math.max(0, p.muzzleFlash - dt * 6);
+        }
+    });
+
+    for (let i = frisbees.length - 1; i >= 0; i--) {
+        frisbees[i].update(dt);
+        if (frisbees[i].markedForDeletion) {
+            frisbees.splice(i, 1);
+        }
+    }
+
+    for (let i = particles.length - 1; i >= 0; i--) {
+        particles[i].update(dt);
+        if (particles[i].alpha <= 0) {
+            particles.splice(i, 1);
+        }
+    }
+
+    for (let i = floatingTexts.length - 1; i >= 0; i--) {
+        floatingTexts[i].update(dt);
+        if (floatingTexts[i].alpha <= 0) {
+            floatingTexts.splice(i, 1);
+        }
+    }
+}
+
+function draw() {
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(0, 0, width, height);
+
+    ctx.fillStyle = '#1e293b';
+    ctx.strokeStyle = '#334155';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, height - 40, 35, -Math.PI / 2, Math.PI / 2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(width, height - 40, 35, Math.PI / 2, -Math.PI / 2);
+    ctx.fill();
+    ctx.stroke();
+
+    frisbees.forEach(f => f.draw(ctx));
+    particles.forEach(p => p.draw(ctx));
+    floatingTexts.forEach(t => t.draw(ctx));
+
+    drawHUD(ctx);
+
+    players.forEach(p => drawCrosshair(ctx, p));
+}
+
+function gameLoop(timestamp) {
+    if (!lastTime) lastTime = timestamp;
+    const dt = Math.min((timestamp - lastTime) / 1000, 0.1);
+    lastTime = timestamp;
+
+    update(dt);
+    draw();
+
+    requestAnimationFrame(gameLoop);
+}
+
+window.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
