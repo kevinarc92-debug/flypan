@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>双人汉字飞盘射击 - MVP (含 Joy-Con 60Hz IMU 完整驱动)</title>
+    <title>双人汉字飞盘射击 - 专业体感版 (1-Euro Filter + 非线性加速引擎)</title>
     <style>
         * {
             margin: 0;
@@ -76,11 +76,20 @@
             background: #0369a1;
             border-color: #7dd3fc;
         }
+        .btn-secondary {
+            background: #1e293b;
+            border-color: #475569;
+            color: #38bdf8;
+            width: 100%;
+            padding: 7px 0;
+            margin-top: 6px;
+            font-size: 12px;
+        }
 
         /* 设置面板主体 */
         #settings-panel {
             margin-top: 8px;
-            width: 350px;
+            width: 355px;
             max-height: calc(100vh - 80px);
             overflow-y: auto;
             background: rgba(15, 23, 42, 0.94);
@@ -243,21 +252,30 @@
             <input type="range" id="slider-interval" min="1.0" max="4.0" step="0.1" value="1.5">
         </div>
 
-        <!-- Joy-Con 体感校准控制区 -->
+        <!-- Joy-Con 1-Euro Filter 体感引擎控制区 -->
         <div class="panel-section-title" style="margin-top: 14px;">
-            <span>🎮 Joy-Con 陀螺仪体感调节</span>
+            <span>🎯 1-Euro 激光笔体感引擎</span>
         </div>
 
         <div class="control-group">
             <div class="control-label">
-                <span>体感准星灵敏度</span>
-                <span id="val-gyro-sens" class="control-val">0.015</span>
+                <span>全局体感灵敏度 (Sensitivity)</span>
+                <span id="val-gyro-sens" class="control-val">0.0035</span>
             </div>
-            <input type="range" id="slider-gyro-sens" min="0.004" max="0.040" step="0.002" value="0.015">
+            <input type="range" id="slider-gyro-sens" min="0.0010" max="0.0100" step="0.0005" value="0.0035">
+        </div>
+
+        <div class="control-group">
+            <div class="control-label">
+                <span>非线性加速指数 (Power Curve)</span>
+                <span id="val-gyro-exp" class="control-val">1.20</span>
+            </div>
+            <input type="range" id="slider-gyro-exp" min="1.00" max="1.45" step="0.05" value="1.20">
             <div class="checkbox-row">
-                <label><input type="checkbox" id="chk-invert-x"> 反转水平 X 轴</label>
-                <label><input type="checkbox" id="chk-invert-y"> 反转垂直 Y 轴</label>
+                <label><input type="checkbox" id="chk-invert-x"> 反转水平 Yaw</label>
+                <label><input type="checkbox" id="chk-invert-y"> 反转垂直 Pitch</label>
             </div>
+            <button id="btn-panel-recenter" class="btn btn-secondary">🎯 立即归中准星并重置滤波器缓存</button>
         </div>
 
         <!-- 动态题库系统区 -->
@@ -294,11 +312,12 @@
 <!-- 右上角：硬件与快捷切换 -->
 <div id="ui-bar">
     <button id="btn-joycon" class="btn">🎮 连接 Joy-Con (WebHID)</button>
+    <button id="btn-recenter" class="btn">🎯 准星归中校准</button>
     <button id="btn-word" class="btn">🔄 切换预置关卡</button>
 </div>
 
 <div class="controls-hint">
-    【Joy-Con】ZR/ZL开火，按压摇杆/Home/截图键一键归中 &nbsp;|&nbsp; 【键鼠兜底】P1:鼠标+左键 / P2:WASD+空格
+    【激光笔握持】手柄顶部朝前，手腕偏航(Yaw)/俯仰(Pitch)瞄准，按压摇杆归中 &nbsp;|&nbsp; 【键鼠兜底】P1:鼠标 / P2:WASD+空格
 </div>
 
 <canvas id="gameCanvas"></canvas>
@@ -306,17 +325,119 @@
 <script>
 /**
  * ==========================================
- * 1. 物理、体感配置与预置 3 套默认题库
+ * 1. 标准 1-Euro Filter (自适应低通滤波器)
+ * ==========================================
+ * 原理：
+ * - 当手部静止或低速微调时，采用极低的截止频率 (minCutoff = 1.0 Hz)，强力滤除生理性抖动；
+ * - 当手腕快速甩枪移动时，根据信号导数 (dx) 按比例 beta (0.007) 动态抬高截止频率，消除滞后感。
+ */
+class LowPassFilter {
+    constructor() {
+        this.y = null;
+        this.s = null;
+    }
+
+    filter(value, alpha) {
+        if (this.y === null) {
+            this.s = value;
+        } else {
+            this.s = alpha * value + (1.0 - alpha) * this.s;
+        }
+        this.y = value;
+        return this.s;
+    }
+
+    hasLastRawValue() {
+        return this.y !== null;
+    }
+
+    lastRawValue() {
+        return this.y;
+    }
+
+    reset(initialValue = null) {
+        this.y = initialValue;
+        this.s = initialValue;
+    }
+}
+
+class OneEuroFilter {
+    /**
+     * @param {number} minCutoff 最小截止频率 (Hz)，推荐 1.0 Hz
+     * @param {number} beta      速度自适应系数，推荐 0.007
+     * @param {number} dCutoff   导数截止频率 (Hz)，推荐 1.0 Hz
+     */
+    constructor(minCutoff = 1.0, beta = 0.007, dCutoff = 1.0) {
+        this.minCutoff = minCutoff;
+        this.beta = beta;
+        this.dCutoff = dCutoff;
+        this.xFilter = new LowPassFilter();
+        this.dxFilter = new LowPassFilter();
+        this.lastTime = null;
+    }
+
+    alpha(cutoff, dt) {
+        const tau = 1.0 / (2.0 * Math.PI * cutoff);
+        return 1.0 / (1.0 + tau / dt);
+    }
+
+    /**
+     * 对输入坐标进行自适应平滑滤波
+     * @param {number} value     当前未滤波的目标坐标
+     * @param {number} timestamp 当前时间戳 (秒)
+     */
+    filter(value, timestamp = performance.now() / 1000) {
+        let dt = 1.0 / 60.0; // Joy-Con 0x30 默认 60Hz 采样周期
+        if (this.lastTime !== null) {
+            const elapsed = timestamp - this.lastTime;
+            if (elapsed > 0.001 && elapsed < 0.2) {
+                dt = elapsed;
+            }
+        }
+        this.lastTime = timestamp;
+
+        // 1. 计算并平滑一阶导数 (当前移动速度 dx)
+        const dValue = this.xFilter.hasLastRawValue()
+            ? (value - this.xFilter.lastRawValue()) / dt
+            : 0.0;
+        const edValue = this.dxFilter.filter(dValue, this.alpha(this.dCutoff, dt));
+
+        // 2. 根据平滑后的速度动态计算主滤波器截止频率 cutoff
+        const cutoff = this.minCutoff + this.beta * Math.abs(edValue);
+
+        // 3. 输出平滑后的坐标
+        return this.xFilter.filter(value, this.alpha(cutoff, dt));
+    }
+
+    /**
+     * 校准归中时清空历史速度缓存并将滤波器状态锚定至中心坐标
+     */
+    reset(anchorValue = null) {
+        this.xFilter.reset(anchorValue);
+        this.dxFilter.reset(0.0);
+        this.lastTime = null;
+    }
+}
+
+/**
+ * ==========================================
+ * 2. 全局物理、体感配置与题库数据
  * ==========================================
  */
 const CONFIG = {
-    speedScale: 1.0,        // 飞行速度倍率 (0.4x ~ 1.8x)
-    apexDamping: 0.65,      // 顶点滞空阻尼 (0 ~ 0.90)
-    spawnInterval: 1.5,     // 飞盘发射间隔 (1.0s ~ 4.0s)
-    gyroSensitivity: 0.015, // Joy-Con 陀螺仪积分灵敏度
-    gyroDeadzone: 12,       // 陀螺仪静止抗抖动盲区 (绝对值小于该值视为 0)
-    invertGyroX: false,     // 是否反转陀螺仪水平轴
-    invertGyroY: false      // 是否反转陀螺仪垂直轴
+    speedScale: 1.0,           // 飞行速度倍率 (0.4x ~ 1.8x)
+    apexDamping: 0.65,         // 顶点滞空阻尼 (0 ~ 0.90)
+    spawnInterval: 1.5,        // 飞盘发射间隔 (1.0s ~ 4.0s)
+
+    // 1-Euro Filter + 非线性加速曲线配置
+    gyroSensitivity: 0.0035,   // 全局灵敏度系数 (适配 1.2 次幂非线性曲线，手腕转 ~20° 覆盖全屏)
+    gyroAccelExponent: 1.20,   // 非线性加速度指数: Math.sign(v) * Math.pow(Math.abs(v), 1.2)
+    gyroStaticDeadzone: 12,    // 静态死区：原始角速度绝对值低于 12 强制归零
+    oneEuroMinCutoff: 1.0,     // 1-Euro minCutoff (1.0 Hz)
+    oneEuroBeta: 0.007,        // 1-Euro beta (0.007)
+    oneEuroDCutoff: 1.0,       // 1-Euro dCutoff (1.0 Hz)
+    invertGyroX: false,        // 反转水平偏航 Yaw
+    invertGyroY: false         // 反转垂直俯仰 Pitch
 };
 
 const PRESET_LEVELS = [
@@ -348,16 +469,18 @@ let activeWordBank = {
 let canvas, ctx;
 let width, height;
 
-// 实体对象池
 const frisbees = [];
 const particles = [];
 const floatingTexts = [];
 
-// 玩家状态 (P1: 玫红色, P2: 青蓝色)
+// 玩家状态 (各自持有独立的 rawX/rawY 积分累加器与 X/Y 双通道 1-Euro 滤波器实例)
 const players = [
     {
         id: 1, name: 'P1',
-        x: 0, y: 0,
+        x: 0, y: 0,           // 经过 1-Euro Filter 平滑后的最终渲染坐标
+        rawX: 0, rawY: 0,     // 陀螺仪非线性积分累加的原始坐标
+        filterX: new OneEuroFilter(CONFIG.oneEuroMinCutoff, CONFIG.oneEuroBeta, CONFIG.oneEuroDCutoff),
+        filterY: new OneEuroFilter(CONFIG.oneEuroMinCutoff, CONFIG.oneEuroBeta, CONFIG.oneEuroDCutoff),
         color: '#f43f5e',
         score: 0,
         cooldown: 0,
@@ -368,6 +491,9 @@ const players = [
     {
         id: 2, name: 'P2',
         x: 0, y: 0,
+        rawX: 0, rawY: 0,
+        filterX: new OneEuroFilter(CONFIG.oneEuroMinCutoff, CONFIG.oneEuroBeta, CONFIG.oneEuroDCutoff),
+        filterY: new OneEuroFilter(CONFIG.oneEuroMinCutoff, CONFIG.oneEuroBeta, CONFIG.oneEuroDCutoff),
         color: '#06b6d4',
         score: 0,
         cooldown: 0,
@@ -381,8 +507,34 @@ const keys = { w: false, a: false, s: false, d: false };
 const P2_SPEED = 650;
 
 /**
+ * 辅助校准函数：重置指定玩家准星回屏幕中心，并清空 1-Euro Filter 历史速度缓存
+ */
+function recenterPlayerReticle(playerIndex, showToast = true) {
+    const p = players[playerIndex];
+    if (!p) return;
+
+    const cx = width / 2;
+    const cy = height / 2;
+
+    p.rawX = cx;
+    p.rawY = cy;
+    p.x = cx;
+    p.y = cy;
+
+    // 清空 1-Euro Filter 历史速度缓存并锚定到中心点
+    p.filterX.reset(cx);
+    p.filterY.reset(cy);
+
+    if (showToast && width && height) {
+        floatingTexts.push(
+            new FloatingText(cx, cy - 28, `🎯 ${p.name} 准星已归中 & 滤波器已重置`, p.color)
+        );
+    }
+}
+
+/**
  * ==========================================
- * 2. 题库解析与 UI 同步逻辑
+ * 3. 题库解析与 UI 同步逻辑
  * ==========================================
  */
 function parseAndApplyWordBank(baseStr, validStr, invalidStr) {
@@ -449,19 +601,17 @@ function loadPresetToForm(index) {
 
 /**
  * ==========================================
- * 3. Joy-Con WebHID 完整底层驱动层 (60Hz 0x30 模式 + IMU 激活)
+ * 4. Joy-Con WebHID 激光笔体感驱动引擎
  * ==========================================
  */
 class JoyConHIDManager {
     constructor() {
-        // 维护最多 2 个槽位: controllers[0] 对应 P1, controllers[1] 对应 P2
-        this.controllers = [null, null];
+        this.controllers = [null, null]; // 槽位 0 -> P1, 槽位 1 -> P2
         this.VENDOR_ID = 0x057e;
         this.PRODUCT_ID_L = 0x2006; // Joy-Con (L)
         this.PRODUCT_ID_R = 0x2007; // Joy-Con (R)
-        this.PRODUCT_ID_PRO = 0x2009; // Pro Controller 兼容
+        this.PRODUCT_ID_PRO = 0x2009; // Pro Controller
 
-        // 监听热插拔断开事件，自动重排槽位保证单手柄优先控制 P1
         if ('hid' in navigator) {
             navigator.hid.addEventListener('disconnect', (e) => {
                 this.handleDisconnect(e.device);
@@ -473,18 +623,11 @@ class JoyConHIDManager {
         return new Promise(resolve => setTimeout(resolve, ms));
     }
 
-    /**
-     * 发送底层 Output Report 0x01 子命令 (Subcommand)
-     * 规范结构：[GlobalPacketCounter(1B), NeutralRumble(8B), SubcommandID(1B), ...Args]
-     */
     async sendSubcommand(ctrl, subcommand, args = []) {
         const packetNumber = ctrl.packetCounter & 0x0f;
         ctrl.packetCounter = (ctrl.packetCounter + 1) & 0x0f;
 
-        // Joy-Con 标准静音振动字节 (Neutral Rumble Data)
         const rumbleData = [0x00, 0x01, 0x40, 0x40, 0x00, 0x01, 0x40, 0x40];
-
-        // 构造 48 字节的 Payload (Output Report 0x01 标准长度)
         const payload = new Uint8Array(48);
         payload[0] = packetNumber;
         payload.set(rumbleData, 1);
@@ -496,19 +639,16 @@ class JoyConHIDManager {
         await ctrl.device.sendReport(0x01, payload);
     }
 
-    /**
-     * 核心握手流程：开启 IMU 陀螺仪 -> 切换 0x30 60Hz 完整报告模式 -> 点亮对应玩家 LED
-     */
     async initializeJoyConHardware(ctrl, playerIndex) {
-        // 1. Subcommand 0x40: 开启 6 轴 IMU 传感器 (参数 0x01 = Enable)
+        // 1. Subcommand 0x40: 开启 6 轴 IMU 陀螺仪
         await this.sendSubcommand(ctrl, 0x40, [0x01]);
         await this.sleep(60);
 
-        // 2. Subcommand 0x03: 设置输入报告模式为 0x30 (Standard full mode @ 60Hz)
+        // 2. Subcommand 0x03: 切换为 0x30 标准 60Hz 完整报告模式
         await this.sendSubcommand(ctrl, 0x03, [0x30]);
         await this.sleep(60);
 
-        // 3. Subcommand 0x30: 点亮手柄侧面玩家指示灯 (P1=0x01, P2=0x03)
+        // 3. Subcommand 0x30: 点亮手柄玩家指示灯
         const ledMask = playerIndex === 0 ? 0x01 : 0x03;
         await this.sendSubcommand(ctrl, 0x30, [ledMask]);
     }
@@ -537,12 +677,11 @@ class JoyConHIDManager {
     }
 
     async attachDevice(device) {
-        // 避免重复绑定同一只手柄
         if (this.controllers.some(c => c && c.device === device)) {
             return;
         }
 
-        // 单手柄优先分配逻辑：优先寻找空缺的 P1 (slot 0)，若 P1 已占用则分配给 P2 (slot 1)
+        // 单手柄优先分配给 P1 (slot 0)
         let targetSlot = -1;
         if (!this.controllers[0]) {
             targetSlot = 0;
@@ -563,29 +702,31 @@ class JoyConHIDManager {
             packetCounter: 0,
             lastFirePressed: false,
             lastRecenterPressed: false,
+            // 动态零偏自校准 (Zero-bias) 状态
+            biasYaw: 0,
+            biasPitch: 0,
+            stillFrameCount: 0,
+            stillAccumYaw: 0,
+            stillAccumPitch: 0,
             listener: null
         };
 
         this.controllers[targetSlot] = ctrl;
         players[targetSlot].hasJoyCon = true;
 
-        // 连接成功时将对应玩家准星居中
-        players[targetSlot].x = width / 2;
-        players[targetSlot].y = height / 2;
+        // 初始化准星位置至屏幕中央并重置滤波器
+        recenterPlayerReticle(targetSlot, false);
 
-        // 绑定 0x30 数据包监听
         ctrl.listener = (event) => this.handleInputReport(targetSlot, ctrl, event);
         device.addEventListener('inputreport', ctrl.listener);
 
-        // 执行底层握手包激活陀螺仪
         await this.initializeJoyConHardware(ctrl, targetSlot);
 
         this.updateUIButton();
         const sideName = ctrl.isLeft ? 'Joy-Con (L)' : 'Joy-Con (R)';
         floatingTexts.push(
-            new FloatingText(width / 2, height / 2 - 40, `🎮 ${sideName} 已接管 P${targetSlot + 1} 准星`, players[targetSlot].color)
+            new FloatingText(width / 2, height / 2 - 40, `🎮 ${sideName} 1-Euro 激光笔引擎已接管 P${targetSlot + 1}`, players[targetSlot].color)
         );
-        console.log(`[WebHID] ${device.productName} 已成功激活 IMU 并分配至 P${targetSlot + 1}`);
     }
 
     handleDisconnect(device) {
@@ -595,7 +736,7 @@ class JoyConHIDManager {
         this.controllers[idx] = null;
         players[idx].hasJoyCon = false;
 
-        // 如果 P1 手柄断开而 P2 仍连接，自动将剩余的 1 只手柄迁移到 P1，确保单手柄始终控制 P1
+        // 若 P1 断开而 P2 仍在线，自动将 P2 手柄移交接管 P1
         if (idx === 0 && this.controllers[1]) {
             const remainingCtrl = this.controllers[1];
             this.controllers[0] = remainingCtrl;
@@ -618,14 +759,18 @@ class JoyConHIDManager {
         if (count === 0) {
             btn.innerText = '🎮 连接 Joy-Con (WebHID)';
         } else if (count === 1) {
-            btn.innerText = '🎮 已连接 (1/2) [P1体感就绪] - 点击连P2';
+            btn.innerText = '🎮 已连接 (1/2) [P1体感] - 点击连P2';
         } else {
             btn.innerText = '🎮 双手柄已就绪 (2/2)';
         }
     }
 
     /**
-     * 解析 0x30 标准报告：按钮判定 + 一键归中 + 陀螺仪角速度积分
+     * 核心输入管线：
+     * 1. 激光笔握法轴向提取 (仅提取 Yaw 与 Pitch，彻底剔除 Roll 侧倾轴)
+     * 2. 连续 30 帧动态零偏自校准 (Zero-bias) + 静态死区 (< 12 归零)
+     * 3. 非线性加速曲线 Math.sign(v) * Math.pow(Math.abs(v), 1.2)
+     * 4. 双通道独立 1-Euro Filter 滤波输出
      */
     handleInputReport(playerIndex, ctrl, event) {
         const { data, reportId } = event;
@@ -635,13 +780,13 @@ class JoyConHIDManager {
         if (!player) return;
 
         // ====================================================
-        // 1. 按键状态解析 (Bytes 2, 3, 4 分别为右柄按键、共享按键、左柄按键)
+        // Step 1: 按键监听 (开火 & 一键归中校准)
         // ====================================================
         const rightBtns = data.getUint8(2);
         const sharedBtns = data.getUint8(3);
         const leftBtns = data.getUint8(4);
 
-        // 开火键：ZR (rightBtns bit 7: 0x80), R (rightBtns bit 6: 0x40), ZL (leftBtns bit 7: 0x80), L (leftBtns bit 6: 0x40)
+        // 开火：ZR / R / ZL / L
         const firePressed =
             (rightBtns & 0x80) !== 0 ||
             (rightBtns & 0x40) !== 0 ||
@@ -653,52 +798,109 @@ class JoyConHIDManager {
         }
         ctrl.lastFirePressed = firePressed;
 
-        // 一键归中校准键：
-        // 共享字节 Byte 3: Minus(0x01), Plus(0x02), R-Stick Click(0x04), L-Stick Click(0x08), Home(0x10), Capture(0x20)
+        // 辅助校准：按下摇杆下压键 (Stick Click) / Home / Capture / Plus / Minus
         const recenterPressed = (sharedBtns & 0x3f) !== 0;
         if (recenterPressed && !ctrl.lastRecenterPressed) {
-            player.x = width / 2;
-            player.y = height / 2;
-            floatingTexts.push(
-                new FloatingText(player.x, player.y - 25, `${player.name} 准星已归中`, player.color)
-            );
+            recenterPlayerReticle(playerIndex, true);
+            return;
         }
         ctrl.lastRecenterPressed = recenterPressed;
 
         // ====================================================
-        // 2. 6轴 IMU 陀螺仪原始数据解析与角速度积分
-        // Report 0x30 包含 3 组 200Hz IMU 采样帧，首帧陀螺仪位于 Byte 18~23 (0-indexed)
-        // 即：Gyro X = Offset 18..19, Gyro Y = Offset 20..21, Gyro Z = Offset 22..23
+        // Step 2: 激光笔模式轴向解耦 (融合 0x30 报告内的 3 个 IMU 采样帧)
+        // Joy-Con 顶部朝向屏幕前方握持：
+        // - Gyro X (Offsets 18, 30, 42): 手柄前后轴 -> 对应手腕侧倾 (Roll)，彻底丢弃不参与计算！
+        // - Gyro Y (Offsets 20, 32, 44): 手柄左右横轴 -> 对应手腕上下俯仰 (Pitch)
+        // - Gyro Z (Offsets 22, 34, 46): 手柄垂直法线轴 -> 对应手腕左右偏航 (Yaw)
         // ====================================================
-        const rawGyroX = data.getInt16(18, true);
-        const rawGyroY = data.getInt16(20, true);
-        const rawGyroZ = data.getInt16(22, true);
+        const frameCount = data.byteLength >= 48 ? 3 : 1;
+        let sumPitch = 0;
+        let sumYaw = 0;
 
-        // 抗抖动静止盲区过滤 (Deadzone)
-        const dz = CONFIG.gyroDeadzone;
-        const deltaGyroX = Math.abs(rawGyroX) < dz ? 0 : rawGyroX;
-        const deltaGyroY = Math.abs(rawGyroY) < dz ? 0 : rawGyroY;
-        const deltaGyroZ = Math.abs(rawGyroZ) < dz ? 0 : rawGyroZ;
+        for (let i = 0; i < frameCount; i++) {
+            const frameOffset = 12 + i * 12; // 每个 IMU 帧 12 字节 (6B Accel + 6B Gyro)
+            const gyroY = data.getInt16(frameOffset + 8, true);  // Pitch
+            const gyroZ = data.getInt16(frameOffset + 10, true); // Yaw
+            sumPitch += gyroY;
+            sumYaw += gyroZ;
+        }
 
-        /**
-         * 轴向正负号映射：
-         * 左柄 (Joy-Con L) 与右柄 (Joy-Con R) 内部主板上の IMU 芯片安装方向相差 180°，
-         * 因此右柄的 Y 轴（俯仰 Pitch）和 Z 轴（偏航 Yaw）天然与左柄符号相反。
-         * 默认按像激光笔一样平握指向屏幕的手势进行映射，并支持面板勾选反转：
-         */
-        const handSign = ctrl.isLeft ? 1 : -1;
-        const dirX = (CONFIG.invertGyroX ? -1 : 1) * -1; // 向右偏航时准星右移
-        const dirY = (CONFIG.invertGyroY ? -1 : 1) * handSign; // 向上抬头时准星上移
+        const rawPitch = sumPitch / frameCount;
+        const rawYaw = sumYaw / frameCount;
 
+        // ====================================================
+        // Step 3: 动态零偏自校准 (Dynamic Zero-bias) 与静态死区
+        // 当手柄连续 30 帧角速度相对于当前零偏的变化低于静态死区 (12) 时，自动更新零点偏置
+        // ====================================================
+        const staticDeadzone = CONFIG.gyroStaticDeadzone; // 12
+        const diffYaw = Math.abs(rawYaw - ctrl.biasYaw);
+        const diffPitch = Math.abs(rawPitch - ctrl.biasPitch);
+
+        // 判断手柄是否处于静止状态 (允许硬件初始零偏在 ±65 范围内被捕获)
+        if (
+            (diffYaw < staticDeadzone && diffPitch < staticDeadzone) ||
+            (Math.abs(rawYaw) < 65 && Math.abs(rawPitch) < 65 && ctrl.stillFrameCount > 0)
+        ) {
+            if (Math.abs(rawYaw) < 65 && Math.abs(rawPitch) < 65) {
+                ctrl.stillFrameCount++;
+                ctrl.stillAccumYaw += rawYaw;
+                ctrl.stillAccumPitch += rawPitch;
+
+                // 连续满 30 帧静止，锁定并平滑更新零点偏置
+                if (ctrl.stillFrameCount >= 30) {
+                    const avgYaw = ctrl.stillAccumYaw / ctrl.stillFrameCount;
+                    const avgPitch = ctrl.stillAccumPitch / ctrl.stillFrameCount;
+                    ctrl.biasYaw = ctrl.biasYaw === 0 ? avgYaw : (ctrl.biasYaw * 0.7 + avgYaw * 0.3);
+                    ctrl.biasPitch = ctrl.biasPitch === 0 ? avgPitch : (ctrl.biasPitch * 0.7 + avgPitch * 0.3);
+                    ctrl.stillFrameCount = 0;
+                    ctrl.stillAccumYaw = 0;
+                    ctrl.stillAccumPitch = 0;
+                }
+            }
+        } else {
+            ctrl.stillFrameCount = 0;
+            ctrl.stillAccumYaw = 0;
+            ctrl.stillAccumPitch = 0;
+        }
+
+        // 扣除动态零偏
+        let calibratedYaw = rawYaw - ctrl.biasYaw;
+        let calibratedPitch = rawPitch - ctrl.biasPitch;
+
+        // 静态死区过滤：绝对值低于 12 时强制归零，消除生理性微颤与残留静漂
+        if (Math.abs(calibratedYaw) < staticDeadzone) calibratedYaw = 0;
+        if (Math.abs(calibratedPitch) < staticDeadzone) calibratedPitch = 0;
+
+        // ====================================================
+        // Step 4: 激光笔握持方向对齐与非线性加速曲线
+        // 左柄 (Joy-Con L) 与右柄 (Joy-Con R) 内部 IMU 芯片 Y/Z 轴相差 180°：
+        // - 水平瞄准 (dx): 手腕向右偏航 (Yaw) -> 准星向右 (+X)
+        // - 垂直瞄准 (dy): 手腕向上俯仰 (Pitch) -> 准星向上 (-Y)
+        // ====================================================
+        const pitchHandSign = ctrl.isLeft ? 1 : -1;
+        const yawDir = (CONFIG.invertGyroX ? -1 : 1) * -1;
+        const pitchDir = (CONFIG.invertGyroY ? -1 : 1) * pitchHandSign;
+
+        const vYaw = calibratedYaw * yawDir;
+        const vPitch = calibratedPitch * pitchDir;
+
+        // 非线性加速度曲线：Math.sign(v) * Math.pow(Math.abs(v), 1.2)
+        const exp = CONFIG.gyroAccelExponent;
         const sens = CONFIG.gyroSensitivity;
 
-        // 角速度积分累加
-        player.x += deltaGyroZ * sens * dirX;
-        player.y += deltaGyroY * sens * dirY;
+        const dx = Math.sign(vYaw) * Math.pow(Math.abs(vYaw), exp) * sens;
+        const dy = Math.sign(vPitch) * Math.pow(Math.abs(vPitch), exp) * sens;
 
-        // 坐标强制边缘限制在画布可视区域内
-        player.x = Math.max(0, Math.min(width, player.x));
-        player.y = Math.max(0, Math.min(height, player.y));
+        // 累加至未滤波的原始目标坐标，并限制在画布可视边界内
+        player.rawX = Math.max(0, Math.min(width, player.rawX + dx));
+        player.rawY = Math.max(0, Math.min(height, player.rawY + dy));
+
+        // ====================================================
+        // Step 5: 独立双通道 1-Euro Filter 自适应滤波输出最终屏幕坐标
+        // ====================================================
+        const nowSec = performance.now() / 1000;
+        player.x = Math.max(0, Math.min(width, player.filterX.filter(player.rawX, nowSec)));
+        player.y = Math.max(0, Math.min(height, player.filterY.filter(player.rawY, nowSec)));
     }
 }
 
@@ -706,7 +908,7 @@ const joyconManager = new JoyConHIDManager();
 
 /**
  * ==========================================
- * 4. 飞盘、粒子与漂浮字实体类
+ * 5. 飞盘、粒子与漂浮字实体类
  * ==========================================
  */
 class Frisbee {
@@ -896,7 +1098,7 @@ class FloatingText {
 
 /**
  * ==========================================
- * 5. 射击判定与游戏逻辑
+ * 6. 射击判定与游戏逻辑
  * ==========================================
  */
 function spawnParticles(x, y, mainColor) {
@@ -941,7 +1143,7 @@ function triggerFire(playerIndex) {
 
 /**
  * ==========================================
- * 6. 渲染函数 (HUD、母字、极细十字准星)
+ * 7. 渲染函数 (HUD、母字、极细十字准星)
  * ==========================================
  */
 function drawHUD(ctx) {
@@ -996,7 +1198,11 @@ function drawHUD(ctx) {
         ctx.fillStyle = '#64748b';
         ctx.font = '12px sans-serif';
         ctx.textAlign = 'left';
-        ctx.fillText(p.cooldown > 0 ? '冷却惩罚中...' : (p.hasJoyCon ? '体感已激活' : '状态: 就绪'), boxX + 14, boxY + 43);
+        ctx.fillText(
+            p.cooldown > 0 ? '冷却惩罚中...' : (p.hasJoyCon ? '1-Euro 滤波就绪' : '状态: 就绪'),
+            boxX + 14,
+            boxY + 43
+        );
         ctx.restore();
     });
 }
@@ -1056,7 +1262,7 @@ function drawCrosshair(ctx, p) {
 
 /**
  * ==========================================
- * 7. 主循环与交互事件初始化
+ * 8. 主循环与交互事件初始化
  * ==========================================
  */
 let lastTime = 0;
@@ -1104,12 +1310,19 @@ function initUIEvents() {
         valInterval.innerText = `${CONFIG.spawnInterval.toFixed(1)}s`;
     });
 
-    // Joy-Con 灵敏度与反转轴向绑定
+    // 体感全局灵敏度与非线性加速度指数微调
     const sliderGyroSens = document.getElementById('slider-gyro-sens');
     const valGyroSens = document.getElementById('val-gyro-sens');
     sliderGyroSens.addEventListener('input', (e) => {
         CONFIG.gyroSensitivity = parseFloat(e.target.value);
-        valGyroSens.innerText = CONFIG.gyroSensitivity.toFixed(3);
+        valGyroSens.innerText = CONFIG.gyroSensitivity.toFixed(4);
+    });
+
+    const sliderGyroExp = document.getElementById('slider-gyro-exp');
+    const valGyroExp = document.getElementById('val-gyro-exp');
+    sliderGyroExp.addEventListener('input', (e) => {
+        CONFIG.gyroAccelExponent = parseFloat(e.target.value);
+        valGyroExp.innerText = CONFIG.gyroAccelExponent.toFixed(2);
     });
 
     document.getElementById('chk-invert-x').addEventListener('change', (e) => {
@@ -1119,6 +1332,16 @@ function initUIEvents() {
     document.getElementById('chk-invert-y').addEventListener('change', (e) => {
         CONFIG.invertGyroY = e.target.checked;
     });
+
+    // 界面一键归中校准按钮 (同时重置 P1/P2 准星与 1-Euro Filter 历史缓存)
+    const triggerAllRecenter = () => {
+        recenterPlayerReticle(0, true);
+        if (players[1].hasJoyCon) {
+            recenterPlayerReticle(1, false);
+        }
+    };
+    document.getElementById('btn-recenter').addEventListener('click', triggerAllRecenter);
+    document.getElementById('btn-panel-recenter').addEventListener('click', triggerAllRecenter);
 
     document.querySelectorAll('.preset-btn').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -1155,15 +1378,23 @@ function init() {
     loadPresetToForm(0);
     initUIEvents();
 
-    players[0].x = width * 0.35;
-    players[0].y = height * 0.5;
-    players[1].x = width * 0.65;
-    players[1].y = height * 0.5;
+    // 初始化 P1 / P2 准星坐标与滤波器状态
+    players[0].x = players[0].rawX = width * 0.35;
+    players[0].y = players[0].rawY = height * 0.5;
+    players[0].filterX.reset(players[0].x);
+    players[0].filterY.reset(players[0].y);
 
-    // 鼠标 + 左键开火作为 P1 的本地调试兜底
+    players[1].x = players[1].rawX = width * 0.65;
+    players[1].y = players[1].rawY = height * 0.5;
+    players[1].filterX.reset(players[1].x);
+    players[1].filterY.reset(players[1].y);
+
+    // 鼠标 + 左键开火作为 P1 的本地调试兜底 (当 P1 未连接 Joy-Con 时生效，避免手碰鼠标干扰体感)
     window.addEventListener('mousemove', (e) => {
-        players[0].x = e.clientX;
-        players[0].y = e.clientY;
+        if (!players[0].hasJoyCon) {
+            players[0].x = players[0].rawX = e.clientX;
+            players[0].y = players[0].rawY = e.clientY;
+        }
     });
 
     window.addEventListener('mousedown', (e) => {
@@ -1206,12 +1437,14 @@ function update(dt) {
     }
 
     const p2 = players[1];
-    if (keys.w) p2.y -= P2_SPEED * dt;
-    if (keys.s) p2.y += P2_SPEED * dt;
-    if (keys.a) p2.x -= P2_SPEED * dt;
-    if (keys.d) p2.x += P2_SPEED * dt;
-    p2.x = Math.max(0, Math.min(width, p2.x));
-    p2.y = Math.max(0, Math.min(height, p2.y));
+    if (!p2.hasJoyCon) {
+        if (keys.w) p2.y -= P2_SPEED * dt;
+        if (keys.s) p2.y += P2_SPEED * dt;
+        if (keys.a) p2.x -= P2_SPEED * dt;
+        if (keys.d) p2.x += P2_SPEED * dt;
+        p2.x = p2.rawX = Math.max(0, Math.min(width, p2.x));
+        p2.y = p2.rawY = Math.max(0, Math.min(height, p2.y));
+    }
 
     players.forEach(p => {
         if (p.cooldown > 0) {
