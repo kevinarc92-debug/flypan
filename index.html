@@ -2759,4 +2759,1651 @@ function drawCollectionRack(ctx, playerIndex) {
             ctx.translate(slotRect.x + slotRect.w / 2, slotRect.y + slotRect.h / 2);
             const popScale = 1.0 + collectedItem.flash * 0.08;
             ctx.scale(popScale, popScale);
-            drawPhraseBadgeGraphic(ctx, slotRect.w, slotRect.h - 2, collectedItem.word, playerIndex, collectedItem.flash);
+            <!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>双人汉字飞盘射击 - 阶段四：工业机甲HUD、发射器与合成音效完整版</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
+        body, html {
+            width: 100%; height: 100%; overflow: hidden;
+            background-color: #0f172a;
+            font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+        }
+        canvas { display: block; cursor: none; }
+        #ui-bar {
+            position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+            z-index: 15; display: flex; gap: 8px; align-items: center;
+        }
+        #settings-wrapper {
+            position: absolute; top: 142px; left: 20px; z-index: 20;
+            display: flex; flex-direction: column; align-items: flex-start; cursor: default;
+        }
+        .btn {
+            background: rgba(15, 23, 42, 0.90); color: #cbd5e1; border: 1px solid #475569;
+            padding: 6px 12px; border-radius: 6px; font-size: 12px; cursor: pointer;
+            transition: all 0.2s; backdrop-filter: blur(6px); box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+        }
+        .btn:hover { background: #334155; border-color: #94a3b8; color: #ffffff; }
+        .btn-primary {
+            background: #0284c7; border-color: #38bdf8; color: #ffffff;
+            font-weight: bold; width: 100%; padding: 9px 0; margin-top: 6px;
+        }
+        .btn-primary:hover { background: #0369a1; border-color: #7dd3fc; }
+        .btn-secondary {
+            background: #1e293b; border-color: #475569; color: #38bdf8;
+            width: 100%; padding: 7px 0; margin-top: 6px; font-size: 12px;
+        }
+        #settings-panel {
+            margin-top: 8px; width: 355px; max-height: calc(100vh - 190px); overflow-y: auto;
+            background: rgba(15, 23, 42, 0.96); border: 1px solid #334155; border-radius: 10px;
+            padding: 16px; color: #f8fafc; backdrop-filter: blur(12px);
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.65);
+        }
+        #settings-panel.collapsed { display: none; }
+        .panel-section-title {
+            font-size: 13px; font-weight: bold; color: #38bdf8; margin-bottom: 10px;
+            padding-bottom: 4px; border-bottom: 1px solid #1e293b;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .control-group { margin-bottom: 11px; }
+        .control-label {
+            display: flex; justify-content: space-between; font-size: 12px;
+            color: #cbd5e1; margin-bottom: 4px;
+        }
+        .control-val { color: #fef08a; font-family: monospace; font-weight: bold; }
+        input[type="range"] { width: 100%; accent-color: #38bdf8; cursor: pointer; }
+        .checkbox-row { display: flex; gap: 14px; font-size: 12px; color: #cbd5e1; margin-top: 6px; align-items: center; }
+        .checkbox-row label { display: flex; align-items: center; gap: 5px; cursor: pointer; }
+        .preset-group { display: flex; gap: 6px; margin-bottom: 12px; }
+        .preset-btn {
+            flex: 1; background: #1e293b; color: #cbd5e1; border: 1px solid #334155;
+            padding: 6px 0; border-radius: 5px; font-size: 12px; cursor: pointer;
+        }
+        .preset-btn:hover { background: #334155; color: #fff; }
+        .preset-btn.active {
+            background: rgba(234, 179, 8, 0.18); border-color: #eab308;
+            color: #fef08a; font-weight: bold;
+        }
+        .input-text, .input-textarea {
+            width: 100%; background: #090d16; border: 1px solid #334155; color: #f8fafc;
+            border-radius: 5px; padding: 7px 9px; font-size: 12px;
+            font-family: 'PingFang SC', 'Microsoft YaHei', monospace; user-select: text; outline: none;
+        }
+        .input-text:focus, .input-textarea:focus { border-color: #38bdf8; }
+        .input-textarea { resize: vertical; min-height: 52px; line-height: 1.4; }
+        .controls-hint {
+            position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
+            color: #64748b; font-size: 12px; pointer-events: none; white-space: nowrap;
+        }
+    </style>
+</head>
+<body>
+
+<div id="settings-wrapper">
+    <button id="btn-toggle-settings" class="btn">⚙️ 设置</button>
+    <div id="settings-panel" class="collapsed">
+        <div class="panel-section-title"><span>🔊 Web Audio 合成音效控制</span></div>
+        <div class="control-group">
+            <div class="control-label">
+                <span>合成音效主音量</span>
+                <span id="val-volume" class="control-val">75%</span>
+            </div>
+            <input type="range" id="slider-volume" min="0.0" max="1.0" step="0.05" value="0.75">
+            <div class="checkbox-row">
+                <label><input type="checkbox" id="chk-mute"> 静音所有音效</label>
+                <button id="btn-reset-hp" class="btn" style="padding: 2px 8px; font-size: 11px; margin-left: auto;">❤️ 恢复满血</button>
+            </div>
+        </div>
+
+        <div class="panel-section-title" style="margin-top: 14px;"><span>🚀 飞盘抛物线物理控制</span></div>
+        <div class="control-group">
+            <div class="control-label">
+                <span>飞盘速度 (0.1x 超慢动作 ~ 1.5x)</span>
+                <span id="val-speed" class="control-val">0.80x</span>
+            </div>
+            <input type="range" id="slider-speed" min="0.10" max="1.50" step="0.05" value="0.80">
+        </div>
+        <div class="control-group">
+            <div class="control-label">
+                <span>顶点滞空阻尼 (最高点悬停读字)</span>
+                <span id="val-damping" class="control-val">75%</span>
+            </div>
+            <input type="range" id="slider-damping" min="0.0" max="0.9" step="0.05" value="0.75">
+        </div>
+        <div class="control-group">
+            <div class="control-label">
+                <span>飞盘发射间隔</span>
+                <span id="val-interval" class="control-val">2.2s</span>
+            </div>
+            <input type="range" id="slider-interval" min="1.0" max="4.0" step="0.1" value="2.2">
+        </div>
+
+        <div class="panel-section-title" style="margin-top: 14px;"><span>🎯 光标体感与 1-Euro 滤波控制</span></div>
+        <div class="control-group">
+            <div class="control-label">
+                <span>准星灵敏度 (0.2x 极稳 ~ 2.0x)</span>
+                <span id="val-reticle-sens" class="control-val">0.6x</span>
+            </div>
+            <input type="range" id="slider-reticle-sens" min="0.2" max="2.0" step="0.1" value="0.6">
+        </div>
+        <div class="control-group">
+            <div class="control-label">
+                <span>非线性加速指数 (Power Curve)</span>
+                <span id="val-gyro-exp" class="control-val">1.20</span>
+            </div>
+            <input type="range" id="slider-gyro-exp" min="1.00" max="1.45" step="0.05" value="1.20">
+            <div class="checkbox-row">
+                <label><input type="checkbox" id="chk-invert-x"> 反转水平 Yaw</label>
+                <label><input type="checkbox" id="chk-invert-y"> 反转垂直 Pitch</label>
+            </div>
+            <button id="btn-panel-recenter" class="btn btn-secondary">🎯 立即归中准星并重置滤波器缓存</button>
+        </div>
+
+        <div class="panel-section-title" style="margin-top: 14px;"><span>📚 动态题库系统</span></div>
+        <div class="control-label"><span>预置电脑默认关卡：</span></div>
+        <div class="preset-group">
+            <button class="preset-btn active" data-preset="0">关卡1【电】</button>
+            <button class="preset-btn" data-preset="1">关卡2【水】</button>
+            <button class="preset-btn" data-preset="2">关卡3【机】</button>
+        </div>
+        <div class="control-group">
+            <div class="control-label"><span>当前词根 (母字)：</span></div>
+            <input type="text" id="input-base" class="input-text" maxlength="2" placeholder="如：电">
+        </div>
+        <div class="control-group">
+            <div class="control-label"><span>有效词映射 (格式 字:完整词，逗号分隔)：</span></div>
+            <textarea id="input-valid" class="input-textarea"></textarea>
+        </div>
+        <div class="control-group">
+            <div class="control-label"><span>干扰字池 (逗号或空格分隔)：</span></div>
+            <textarea id="input-invalid" class="input-textarea" style="min-height: 42px;"></textarea>
+        </div>
+        <button id="btn-apply-wordbank" class="btn btn-primary">✨ 应用题库并清屏</button>
+    </div>
+</div>
+
+<div id="ui-bar">
+    <button id="btn-joycon" class="btn">🎮 连接 Joy-Con</button>
+    <button id="btn-recenter" class="btn">🎯 准星归中</button>
+    <button id="btn-word" class="btn">🔄 切换关卡</button>
+</div>
+
+<div class="controls-hint">
+    【激光笔握持】手柄顶部朝前，手腕左/右/上/下直观瞄准，按压摇杆归中 &nbsp;|&nbsp; 【键鼠兜底】P1:鼠标 / P2:WASD+空格
+</div>
+
+<canvas id="gameCanvas"></canvas>
+
+<script>
+/**
+ * 0. 零外部音频文件 Web Audio API 实时音效合成器
+ */
+class SoundSynthesizer {
+    constructor() {
+        this.ctx = null;
+        this.volume = 0.75;
+        this.muted = false;
+    }
+
+    ensureContext() {
+        if (this.muted || this.volume <= 0) return null;
+        if (!this.ctx) {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (AudioCtx) this.ctx = new AudioCtx();
+        }
+        if (this.ctx && this.ctx.state === 'suspended') {
+            this.ctx.resume().catch(() => {});
+        }
+        return this.ctx;
+    }
+
+    playLaunch() {
+        const ctx = this.ensureContext();
+        if (!ctx) return;
+        const now = ctx.currentTime;
+
+        const bufferSize = Math.floor(ctx.sampleRate * 0.14);
+        const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+        const output = noiseBuffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+            output[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.045));
+        }
+
+        const whiteNoise = ctx.createBufferSource();
+        whiteNoise.buffer = noiseBuffer;
+
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.frequency.setValueAtTime(650, now);
+        filter.frequency.exponentialRampToValueAtTime(1800, now + 0.12);
+        filter.Q.value = 2.2;
+
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0.22 * this.volume, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+
+        whiteNoise.connect(filter);
+        filter.connect(gain);
+        gain.connect(ctx.destination);
+        whiteNoise.start(now);
+
+        const osc = ctx.createOscillator();
+        const oscGain = ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(145, now);
+        osc.frequency.exponentialRampToValueAtTime(48, now + 0.09);
+
+        oscGain.gain.setValueAtTime(0.25 * this.volume, now);
+        oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+
+        osc.connect(oscGain);
+        oscGain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.09);
+    }
+
+    playLaser(isP1 = true) {
+        const ctx = this.ensureContext();
+        if (!ctx) return;
+        const now = ctx.currentTime;
+
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(isP1 ? 1150 : 1380, now);
+        osc.frequency.exponentialRampToValueAtTime(190, now + 0.085);
+
+        gain.gain.setValueAtTime(0.18 * this.volume, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.085);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.085);
+    }
+
+    playHitValid() {
+        const ctx = this.ensureContext();
+        if (!ctx) return;
+        const now = ctx.currentTime;
+
+        [523.25, 659.25, 783.99, 1046.50].forEach((freq, idx) => {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = idx === 3 ? 'triangle' : 'sine';
+            const startTime = now + idx * 0.018;
+            osc.frequency.setValueAtTime(freq, startTime);
+
+            gain.gain.setValueAtTime(0.001, startTime);
+            gain.gain.linearRampToValueAtTime((0.18 - idx * 0.03) * this.volume, startTime + 0.012);
+            gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.32);
+
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(startTime);
+            osc.stop(startTime + 0.33);
+        });
+    }
+
+    playScoreFlash() {
+        const ctx = this.ensureContext();
+        if (!ctx) return;
+        const now = ctx.currentTime;
+
+        [880, 1174.66, 1318.51].forEach((freq, idx) => {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'triangle';
+            const t = now + idx * 0.035;
+            osc.frequency.setValueAtTime(freq, t);
+
+            gain.gain.setValueAtTime(0.14 * this.volume, t);
+            gain.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(t);
+            osc.stop(t + 0.19);
+        });
+    }
+
+    playHitWrong() {
+        const ctx = this.ensureContext();
+        if (!ctx) return;
+        const now = ctx.currentTime;
+
+        [285, 438, 692, 1125].forEach((freq) => {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(freq, now);
+            osc.frequency.exponentialRampToValueAtTime(freq * 0.88, now + 0.22);
+
+            gain.gain.setValueAtTime(0.10 * this.volume, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(now);
+            osc.stop(now + 0.23);
+        });
+    }
+}
+
+const sfx = new SoundSynthesizer();
+
+/**
+ * 1. 标准 1-Euro Filter (自适应低通滤波器)
+ */
+class LowPassFilter {
+    constructor() { this.y = null; this.s = null; }
+    filter(value, alpha) {
+        if (this.y === null) this.s = value;
+        else this.s = alpha * value + (1.0 - alpha) * this.s;
+        this.y = value;
+        return this.s;
+    }
+    hasLastRawValue() { return this.y !== null; }
+    lastRawValue() { return this.y; }
+    reset(val = null) { this.y = val; this.s = val; }
+}
+
+class OneEuroFilter {
+    constructor(minCutoff = 1.0, beta = 0.007, dCutoff = 1.0) {
+        this.minCutoff = minCutoff;
+        this.beta = beta;
+        this.dCutoff = dCutoff;
+        this.xFilter = new LowPassFilter();
+        this.dxFilter = new LowPassFilter();
+        this.lastTime = null;
+    }
+    alpha(cutoff, dt) {
+        const tau = 1.0 / (2.0 * Math.PI * cutoff);
+        return 1.0 / (1.0 + tau / dt);
+    }
+    filter(value, timestamp = performance.now() / 1000) {
+        let dt = 1.0 / 60.0;
+        if (this.lastTime !== null) {
+            const elapsed = timestamp - this.lastTime;
+            if (elapsed > 0.001 && elapsed < 0.2) dt = elapsed;
+        }
+        this.lastTime = timestamp;
+        const dValue = this.xFilter.hasLastRawValue() ? (value - this.xFilter.lastRawValue()) / dt : 0.0;
+        const edValue = this.dxFilter.filter(dValue, this.alpha(this.dCutoff, dt));
+        const cutoff = this.minCutoff + this.beta * Math.abs(edValue);
+        return this.xFilter.filter(value, this.alpha(cutoff, dt));
+    }
+    reset(anchorValue = null) {
+        this.xFilter.reset(anchorValue);
+        this.dxFilter.reset(0.0);
+        this.lastTime = null;
+    }
+}
+
+/**
+ * 2. 全局物理、体感配置与题库数据
+ */
+const CONFIG = {
+    speedScale: 0.80,
+    apexDamping: 0.75,
+    spawnInterval: 2.2,
+    reticleSensitivity: 0.6,
+    baseGyroSensitivity: 0.0018,
+    gyroAccelExponent: 1.20,
+    gyroStaticDeadzone: 12,
+    oneEuroMinCutoff: 1.0,
+    oneEuroBeta: 0.007,
+    oneEuroDCutoff: 1.0,
+    invertGyroX: false,
+    invertGyroY: false
+};
+
+const PRESET_LEVELS = [
+    {
+        base: '电',
+        validRaw: '脑:电脑, 话:电话, 影:电影, 视:电视, 池:电池, 梯:电梯, 源:电源, 流:电流, 子:电子, 车:电车',
+        invalidRaw: '鱼, 木, 水, 草, 石, 狗, 羊, 鸟, 土, 米'
+    },
+    {
+        base: '水',
+        validRaw: '果:水果, 平:水平, 晶:水晶, 滴:水滴, 杯:水杯, 库:水库, 泥:水泥, 手:水手, 稻:水稻, 源:水源',
+        invalidRaw: '火, 山, 刀, 车, 日, 月, 木, 石, 布, 金'
+    },
+    {
+        base: '机',
+        validRaw: '飞:飞机, 手:手机, 器:机器, 会:机会, 司:司机, 关:机关, 密:机密, 场:机场, 智:机智, 危:危机',
+        invalidRaw: '草, 羊, 牛, 鱼, 瓜, 豆, 云, 雨, 雪, 泥'
+    }
+];
+
+let currentPresetIdx = 0;
+let activeWordBank = { base: '电', validList: [], invalidList: [] };
+let canvas, ctx, width, height;
+
+const frisbees = [];
+const discSectorShards = [];
+const shockwaveRings = [];
+const launcherRings = [];
+const flyingTokens = [];
+const particles = [];
+const floatingTexts = [];
+
+const launchers = [
+    { side: 'left', recoil: 0, angle: -Math.PI * 0.34 },
+    { side: 'right', recoil: 0, angle: -Math.PI * 0.66 }
+];
+
+const RACK_SLOT_COUNT = 4;
+
+const players = [
+    {
+        id: 1, name: 'P1',
+        x: 0, y: 0, rawX: 0, rawY: 0,
+        filterX: new OneEuroFilter(CONFIG.oneEuroMinCutoff, CONFIG.oneEuroBeta, CONFIG.oneEuroDCutoff),
+        filterY: new OneEuroFilter(CONFIG.oneEuroMinCutoff, CONFIG.oneEuroBeta, CONFIG.oneEuroDCutoff),
+        color: '#facc15', accentColor: '#fef08a', rackBg: 'rgba(250, 204, 21, 0.10)',
+        score: 0, hp: 8, maxHp: 8, damageFlash: 0, scoreFlashTimer: 0,
+        cooldown: 0, maxCooldown: 2.0, firePulse: 0, isLocked: false, hasJoyCon: false,
+        collectedWords: []
+    },
+    {
+        id: 2, name: 'P2',
+        x: 0, y: 0, rawX: 0, rawY: 0,
+        filterX: new OneEuroFilter(CONFIG.oneEuroMinCutoff, CONFIG.oneEuroBeta, CONFIG.oneEuroDCutoff),
+        filterY: new OneEuroFilter(CONFIG.oneEuroMinCutoff, CONFIG.oneEuroBeta, CONFIG.oneEuroDCutoff),
+        color: '#d946ef', accentColor: '#f5d0fe', rackBg: 'rgba(217, 70, 239, 0.10)',
+        score: 0, hp: 8, maxHp: 8, damageFlash: 0, scoreFlashTimer: 0,
+        cooldown: 0, maxCooldown: 2.0, firePulse: 0, isLocked: false, hasJoyCon: false,
+        collectedWords: []
+    }
+];
+
+const keys = { w: false, a: false, s: false, d: false };
+const P2_SPEED = 650;
+
+function getPlayerRackGeometry(playerIndex) {
+    const rackW = 148, rackH = 224;
+    const rackX = playerIndex === 0 ? 20 : width - 20 - rackW;
+    const rackY = 184;
+    const slotW = rackW - 20, slotH = 42;
+    const slotStartX = rackX + 10, slotStartY = rackY + 34, slotGap = 46;
+
+    return {
+        rackX, rackY, rackW, rackH, slotW, slotH,
+        getSlotCenter(slotIdx) {
+            const clampedIdx = Math.max(0, Math.min(RACK_SLOT_COUNT - 1, slotIdx));
+            return { x: slotStartX + slotW / 2, y: slotStartY + clampedIdx * slotGap + slotH / 2 };
+        },
+        getSlotRect(slotIdx) {
+            return { x: slotStartX, y: slotStartY + slotIdx * slotGap, w: slotW, h: slotH };
+        }
+    };
+}
+
+function recenterPlayerReticle(playerIndex, showToast = true) {
+    const p = players[playerIndex];
+    if (!p) return;
+    const cx = width / 2, cy = height / 2;
+    p.rawX = p.x = cx;
+    p.rawY = p.y = cy;
+    p.filterX.reset(cx);
+    p.filterY.reset(cy);
+    if (showToast && width && height) {
+        floatingTexts.push(new FloatingText(cx, cy - 28, `🎯 ${p.name} 准星已归中`, p.color));
+    }
+}
+
+function syncReticleSensitivityToFilters() {
+    const s = CONFIG.reticleSensitivity;
+    players.forEach(p => {
+        p.filterX.minCutoff = p.filterY.minCutoff = CONFIG.oneEuroMinCutoff * (0.7 + 0.5 * s);
+        p.filterX.beta = p.filterY.beta = CONFIG.oneEuroBeta * (0.75 + 0.4 * s);
+    });
+}
+
+function parseAndApplyWordBank(baseStr, validStr, invalidStr) {
+    const cleanBase = (baseStr || '').trim() || '字';
+    const validEntries = validStr.split(/[,，\n]+/).map(s => s.trim()).filter(Boolean);
+    const parsedValid = [];
+    for (const item of validEntries) {
+        const parts = item.split(/[:：]/).map(s => s.trim()).filter(Boolean);
+        if (parts.length >= 2) parsedValid.push({ char: parts[0][0], word: parts[1] });
+        else if (parts.length === 1) parsedValid.push({ char: parts[0][0], word: cleanBase + parts[0][0] });
+    }
+    if (parsedValid.length === 0) parsedValid.push({ char: '光', word: cleanBase + '光' });
+
+    const parsedInvalid = invalidStr.split(/[,，\s\n]+/).map(s => s.trim()).filter(Boolean).map(s => s[0]);
+    if (parsedInvalid.length === 0) parsedInvalid.push('✕');
+
+    activeWordBank = { base: cleanBase, validList: parsedValid, invalidList: parsedInvalid };
+    frisbees.length = 0;
+    discSectorShards.length = 0;
+    shockwaveRings.length = 0;
+    flyingTokens.length = 0;
+    players.forEach(p => { p.collectedWords = []; p.hp = p.maxHp; });
+
+    if (width && height) {
+        floatingTexts.push(new FloatingText(width / 2, 145, `✨ 已切换母字【${cleanBase}】`, '#38bdf8'));
+    }
+}
+
+function loadPresetToForm(index) {
+    currentPresetIdx = index;
+    const preset = PRESET_LEVELS[index];
+    document.getElementById('input-base').value = preset.base;
+    document.getElementById('input-valid').value = preset.validRaw;
+    document.getElementById('input-invalid').value = preset.invalidRaw;
+    document.querySelectorAll('.preset-btn').forEach((btn, idx) => btn.classList.toggle('active', idx === index));
+    parseAndApplyWordBank(preset.base, preset.validRaw, preset.invalidRaw);
+}
+
+/**
+ * 4. Joy-Con WebHID 激光笔体感驱动引擎
+ */
+class JoyConHIDManager {
+    constructor() {
+        this.controllers = [null, null];
+        this.VENDOR_ID = 0x057e;
+        this.PRODUCT_ID_L = 0x2006;
+        this.PRODUCT_ID_R = 0x2007;
+        this.PRODUCT_ID_PRO = 0x2009;
+        if ('hid' in navigator) {
+            navigator.hid.addEventListener('disconnect', (e) => this.handleDisconnect(e.device));
+        }
+    }
+
+    sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+
+    async sendSubcommand(ctrl, subcommand, args = []) {
+        const packetNumber = ctrl.packetCounter & 0x0f;
+        ctrl.packetCounter = (ctrl.packetCounter + 1) & 0x0f;
+        const rumbleData = [0x00, 0x01, 0x40, 0x40, 0x00, 0x01, 0x40, 0x40];
+        const payload = new Uint8Array(48);
+        payload[0] = packetNumber;
+        payload.set(rumbleData, 1);
+        payload[9] = subcommand;
+        for (let i = 0; i < args.length; i++) payload[10 + i] = args[i];
+        await ctrl.device.sendReport(0x01, payload);
+    }
+
+    async initializeJoyConHardware(ctrl, playerIndex) {
+        await this.sendSubcommand(ctrl, 0x40, [0x01]);
+        await this.sleep(60);
+        await this.sendSubcommand(ctrl, 0x03, [0x30]);
+        await this.sleep(60);
+        await this.sendSubcommand(ctrl, 0x30, [playerIndex === 0 ? 0x01 : 0x03]);
+    }
+
+    async requestConnection() {
+        if (!('hid' in navigator)) {
+            alert('当前浏览器不支持 WebHID API，请使用桌面版 Chrome 或 Edge 浏览器。');
+            return;
+        }
+        try {
+            const selectedDevices = await navigator.hid.requestDevice({
+                filters: [
+                    { vendorId: this.VENDOR_ID, productId: this.PRODUCT_ID_L },
+                    { vendorId: this.VENDOR_ID, productId: this.PRODUCT_ID_R },
+                    { vendorId: this.VENDOR_ID, productId: this.PRODUCT_ID_PRO }
+                ]
+            });
+            for (const device of selectedDevices) await this.attachDevice(device);
+        } catch (err) {
+            console.error('[WebHID] 连接异常:', err);
+        }
+    }
+
+    async attachDevice(device) {
+        if (this.controllers.some(c => c && c.device === device)) return;
+        let targetSlot = !this.controllers[0] ? 0 : (!this.controllers[1] ? 1 : -1);
+        if (targetSlot === -1) { alert('已达到最大 2 只手柄连接上限！'); return; }
+        if (!device.opened) await device.open();
+
+        const ctrl = {
+            device, isLeft: device.productId === this.PRODUCT_ID_L,
+            packetCounter: 0, lastFirePressed: false, lastRecenterPressed: false,
+            biasYaw: 0, biasPitch: 0, stillFrameCount: 0, stillAccumYaw: 0, stillAccumPitch: 0, listener: null
+        };
+        this.controllers[targetSlot] = ctrl;
+        players[targetSlot].hasJoyCon = true;
+        recenterPlayerReticle(targetSlot, false);
+
+        ctrl.listener = (event) => this.handleInputReport(targetSlot, ctrl, event);
+        device.addEventListener('inputreport', ctrl.listener);
+        await this.initializeJoyConHardware(ctrl, targetSlot);
+        this.updateUIButton();
+
+        const sideName = ctrl.isLeft ? 'Joy-Con (L)' : 'Joy-Con (R)';
+        floatingTexts.push(new FloatingText(width / 2, height / 2 - 40, `🎮 ${sideName} 已接管 P${targetSlot + 1}`, players[targetSlot].color));
+    }
+
+    handleDisconnect(device) {
+        const idx = this.controllers.findIndex(c => c && c.device === device);
+        if (idx === -1) return;
+        this.controllers[idx] = null;
+        players[idx].hasJoyCon = false;
+
+        if (idx === 0 && this.controllers[1]) {
+            const rem = this.controllers[1];
+            this.controllers[0] = rem;
+            this.controllers[1] = null;
+            players[0].hasJoyCon = true;
+            players[1].hasJoyCon = false;
+            rem.device.removeEventListener('inputreport', rem.listener);
+            rem.listener = (event) => this.handleInputReport(0, rem, event);
+            rem.device.addEventListener('inputreport', rem.listener);
+            this.sendSubcommand(rem, 0x30, [0x01]).catch(() => {});
+        }
+        this.updateUIButton();
+    }
+
+    updateUIButton() {
+        const count = this.controllers.filter(Boolean).length;
+        const btn = document.getElementById('btn-joycon');
+        btn.innerText = count === 0 ? '🎮 连接 Joy-Con' : (count === 1 ? '🎮 已连接(1/2) 再点连P2' : '🎮 双手柄已就绪(2/2)');
+    }
+
+    handleInputReport(playerIndex, ctrl, event) {
+        const { data, reportId } = event;
+        if (reportId !== 0x30 || data.byteLength < 25) return;
+        const player = players[playerIndex];
+        if (!player) return;
+
+        const rightBtns = data.getUint8(2), sharedBtns = data.getUint8(3), leftBtns = data.getUint8(4);
+        const firePressed = (rightBtns & 0x80) !== 0 || (rightBtns & 0x40) !== 0 || (leftBtns & 0x80) !== 0 || (leftBtns & 0x40) !== 0;
+        if (firePressed && !ctrl.lastFirePressed) triggerFire(playerIndex);
+        ctrl.lastFirePressed = firePressed;
+
+        const recenterPressed = (sharedBtns & 0x3f) !== 0;
+        if (recenterPressed && !ctrl.lastRecenterPressed) {
+            recenterPlayerReticle(playerIndex, true);
+            return;
+        }
+        ctrl.lastRecenterPressed = recenterPressed;
+
+        const frameCount = data.byteLength >= 48 ? 3 : 1;
+        let sumPitch = 0, sumYaw = 0;
+        for (let i = 0; i < frameCount; i++) {
+            const offset = 12 + i * 12;
+            sumPitch += data.getInt16(offset + 8, true);
+            sumYaw += data.getInt16(offset + 10, true);
+        }
+        const rawPitch = sumPitch / frameCount;
+        const rawYaw = sumYaw / frameCount;
+
+        const staticDeadzone = CONFIG.gyroStaticDeadzone;
+        const diffYaw = Math.abs(rawYaw - ctrl.biasYaw);
+        const diffPitch = Math.abs(rawPitch - ctrl.biasPitch);
+
+        if ((diffYaw < staticDeadzone && diffPitch < staticDeadzone) || (Math.abs(rawYaw) < 65 && Math.abs(rawPitch) < 65 && ctrl.stillFrameCount > 0)) {
+            if (Math.abs(rawYaw) < 65 && Math.abs(rawPitch) < 65) {
+                ctrl.stillFrameCount++;
+                ctrl.stillAccumYaw += rawYaw;
+                ctrl.stillAccumPitch += rawPitch;
+                if (ctrl.stillFrameCount >= 30) {
+                    const avgY = ctrl.stillAccumYaw / ctrl.stillFrameCount;
+                    const avgP = ctrl.stillAccumPitch / ctrl.stillFrameCount;
+                    ctrl.biasYaw = ctrl.biasYaw === 0 ? avgY : (ctrl.biasYaw * 0.7 + avgY * 0.3);
+                    ctrl.biasPitch = ctrl.biasPitch === 0 ? avgP : (ctrl.biasPitch * 0.7 + avgP * 0.3);
+                    ctrl.stillFrameCount = 0; ctrl.stillAccumYaw = 0; ctrl.stillAccumPitch = 0;
+                }
+            }
+        } else {
+            ctrl.stillFrameCount = 0; ctrl.stillAccumYaw = 0; ctrl.stillAccumPitch = 0;
+        }
+
+        let calYaw = rawYaw - ctrl.biasYaw;
+        let calPitch = rawPitch - ctrl.biasPitch;
+        if (Math.abs(calYaw) < staticDeadzone) calYaw = 0;
+        if (Math.abs(calPitch) < staticDeadzone) calPitch = 0;
+
+        const pitchHandSign = ctrl.isLeft ? 1 : -1;
+        const yawDir = (CONFIG.invertGyroX ? -1 : 1) * 1;
+        const pitchDir = (CONFIG.invertGyroY ? -1 : 1) * pitchHandSign;
+
+        const vYaw = calYaw * yawDir;
+        const vPitch = calPitch * pitchDir;
+        const exp = CONFIG.gyroAccelExponent;
+        const effSens = CONFIG.baseGyroSensitivity * CONFIG.reticleSensitivity;
+
+        const dx = Math.sign(vYaw) * Math.pow(Math.abs(vYaw), exp) * effSens;
+        const dy = Math.sign(vPitch) * Math.pow(Math.abs(vPitch), exp) * effSens;
+
+        player.rawX = Math.max(0, Math.min(width, player.rawX + dx));
+        player.rawY = Math.max(0, Math.min(height, player.rawY + dy));
+
+        const nowSec = performance.now() / 1000;
+        player.x = Math.max(0, Math.min(width, player.filterX.filter(player.rawX, nowSec)));
+        player.y = Math.max(0, Math.min(height, player.filterY.filter(player.rawY, nowSec)));
+    }
+}
+
+const joyconManager = new JoyConHIDManager();
+
+/**
+ * 5. 飞盘矢量绘制
+ */
+function renderDiscFaceGraphic(ctx, R, isValid, themeVariant, angle, char) {
+    ctx.save();
+    ctx.rotate(angle);
+
+    if (isValid) {
+        const isYellowTeal = themeVariant === 0;
+        const rimGrad = ctx.createRadialGradient(-R * 0.25, -R * 0.25, R * 0.45, 0, 0, R);
+        if (isYellowTeal) {
+            rimGrad.addColorStop(0, '#fef08a'); rimGrad.addColorStop(0.55, '#eab308');
+            rimGrad.addColorStop(0.88, '#ca8a04'); rimGrad.addColorStop(1, '#713f12');
+        } else {
+            rimGrad.addColorStop(0, '#fdba74'); rimGrad.addColorStop(0.55, '#f97316');
+            rimGrad.addColorStop(0.88, '#c2410c'); rimGrad.addColorStop(1, '#431407');
+        }
+
+        ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2);
+        ctx.fillStyle = rimGrad; ctx.fill();
+
+        ctx.save();
+        ctx.beginPath(); ctx.arc(0, 0, R - 1.5, 0, Math.PI * 2); ctx.clip();
+        ctx.fillStyle = isYellowTeal ? 'rgba(20, 184, 166, 0.45)' : 'rgba(15, 23, 42, 0.55)';
+        ctx.beginPath(); ctx.arc(R * 0.65, R * 0.45, R * 0.42, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = isYellowTeal ? 'rgba(15, 23, 42, 0.28)' : 'rgba(6, 182, 212, 0.32)';
+        ctx.beginPath(); ctx.arc(-R * 0.62, R * 0.52, R * 0.32, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+
+        ctx.lineWidth = 3; ctx.strokeStyle = '#090d16';
+        ctx.beginPath(); ctx.arc(0, 0, R - 1, 0, Math.PI * 2); ctx.stroke();
+
+        ctx.strokeStyle = 'rgba(15, 23, 42, 0.65)'; ctx.lineWidth = 2;
+        for (let i = 0; i < 4; i++) {
+            const a = (i * Math.PI) / 2 + 0.35;
+            ctx.beginPath();
+            ctx.moveTo(Math.cos(a) * (R * 0.72), Math.sin(a) * (R * 0.72));
+            ctx.lineTo(Math.cos(a) * (R * 0.96), Math.sin(a) * (R * 0.96));
+            ctx.stroke();
+        }
+
+        const innerR = R * 0.72;
+        ctx.beginPath(); ctx.arc(0, 0, innerR + 3, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.55)'; ctx.lineWidth = 3; ctx.stroke();
+
+        ctx.beginPath(); ctx.arc(0, 0, innerR + 1, 0, Math.PI * 2);
+        ctx.strokeStyle = isYellowTeal ? '#fef9c3' : '#ffedd5'; ctx.lineWidth = 1.5; ctx.stroke();
+
+        const coreGrad = ctx.createRadialGradient(-innerR * 0.2, -innerR * 0.2, innerR * 0.1, 0, 0, innerR);
+        if (isYellowTeal) {
+            coreGrad.addColorStop(0, '#5eead4'); coreGrad.addColorStop(0.6, '#14b8a6'); coreGrad.addColorStop(1, '#0f766e');
+        } else {
+            coreGrad.addColorStop(0, '#ea580c'); coreGrad.addColorStop(0.65, '#9a3412'); coreGrad.addColorStop(1, '#1e293b');
+        }
+
+        ctx.save();
+        ctx.beginPath(); ctx.arc(0, 0, innerR, 0, Math.PI * 2);
+        ctx.fillStyle = coreGrad; ctx.fill(); ctx.clip();
+
+        if (isYellowTeal) {
+            ctx.save();
+            ctx.translate(-innerR * 0.55, -innerR * 0.42); ctx.rotate(-0.28);
+            ctx.fillStyle = '#f8fafc'; ctx.fillRect(-14, -9, 28, 18);
+            ctx.fillStyle = '#d946ef'; ctx.fillRect(-11, -6, 22, 12);
+            ctx.restore();
+            ctx.fillStyle = '#ea580c';
+            ctx.beginPath(); ctx.arc(innerR * 0.52, innerR * 0.48, 11, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.stroke();
+        } else {
+            ctx.fillStyle = '#090d16';
+            ctx.beginPath();
+            ctx.moveTo(innerR * 0.15, -innerR); ctx.lineTo(innerR, -innerR * 0.2);
+            ctx.lineTo(innerR, innerR); ctx.lineTo(-innerR * 0.2, innerR);
+            ctx.closePath(); ctx.fill();
+
+            ctx.save();
+            ctx.translate(-innerR * 0.58, innerR * 0.35); ctx.rotate(0.4);
+            ctx.fillStyle = '#f8fafc'; ctx.fillRect(-13, -8, 26, 16);
+            ctx.fillStyle = '#090d16'; ctx.fillRect(-9, -8, 5, 16); ctx.fillRect(1, -8, 5, 16);
+            ctx.restore();
+        }
+        ctx.beginPath(); ctx.arc(0, 0, innerR - 1, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(9, 13, 22, 0.75)'; ctx.lineWidth = 3; ctx.stroke();
+        ctx.restore();
+
+    } else {
+        const metalGrad = ctx.createRadialGradient(-R * 0.3, -R * 0.3, R * 0.2, 0, 0, R);
+        metalGrad.addColorStop(0, '#64748b'); metalGrad.addColorStop(0.55, '#334155');
+        metalGrad.addColorStop(0.88, '#1e293b'); metalGrad.addColorStop(1, '#090d16');
+
+        ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2);
+        ctx.fillStyle = metalGrad; ctx.fill();
+        ctx.lineWidth = 3; ctx.strokeStyle = '#090d16'; ctx.stroke();
+
+        const hazardOuterR = R * 0.79, hazardInnerR = R * 0.65;
+        const stripeMidR = (hazardOuterR + hazardInnerR) / 2;
+        const stripeWidth = hazardOuterR - hazardInnerR;
+
+        ctx.beginPath(); ctx.arc(0, 0, stripeMidR, 0, Math.PI * 2);
+        ctx.strokeStyle = '#eab308'; ctx.lineWidth = stripeWidth; ctx.stroke();
+
+        const numStripes = 18, stepAngle = (Math.PI * 2) / numStripes;
+        ctx.strokeStyle = '#111827'; ctx.lineWidth = stripeWidth + 1;
+        for (let i = 0; i < numStripes; i++) {
+            const startA = i * stepAngle;
+            ctx.beginPath(); ctx.arc(0, 0, stripeMidR, startA, startA + stepAngle * 0.52); ctx.stroke();
+        }
+
+        ctx.lineWidth = 2; ctx.strokeStyle = '#090d16';
+        ctx.beginPath(); ctx.arc(0, 0, hazardOuterR, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(0, 0, hazardInnerR, 0, Math.PI * 2); ctx.stroke();
+
+        const coreGrad = ctx.createRadialGradient(-R * 0.15, -R * 0.15, 4, 0, 0, hazardInnerR);
+        coreGrad.addColorStop(0, '#475569'); coreGrad.addColorStop(0.7, '#334155'); coreGrad.addColorStop(1, '#1e293b');
+        ctx.beginPath(); ctx.arc(0, 0, hazardInnerR - 1, 0, Math.PI * 2);
+        ctx.fillStyle = coreGrad; ctx.fill();
+
+        const plateR = hazardInnerR * 0.82;
+        ctx.beginPath();
+        for (let i = 0; i < 8; i++) {
+            const a = (i * Math.PI) / 4 + Math.PI / 8;
+            const px = Math.cos(a) * plateR, py = Math.sin(a) * plateR;
+            if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        }
+        ctx.closePath(); ctx.fillStyle = '#273244'; ctx.fill();
+        ctx.lineWidth = 2; ctx.strokeStyle = '#0f172a'; ctx.stroke();
+    }
+    ctx.restore();
+
+    ctx.save();
+    ctx.beginPath(); ctx.arc(0, 0, R - 4, -Math.PI * 0.82, -Math.PI * 0.18);
+    ctx.strokeStyle = isValid ? 'rgba(255, 255, 255, 0.55)' : 'rgba(226, 232, 240, 0.35)';
+    ctx.lineWidth = 3.5; ctx.lineCap = 'round'; ctx.stroke();
+    ctx.restore();
+
+    const fontSize = Math.round(R * 1.2);
+    ctx.save();
+    ctx.font = `900 ${fontSize}px "PingFang SC", "Microsoft YaHei", "Heiti SC", sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round'; ctx.miterLimit = 2;
+
+    if (isValid) {
+        if (themeVariant === 0) {
+            ctx.lineWidth = 11; ctx.strokeStyle = '#ffffff'; ctx.strokeText(char, 0, 3);
+            ctx.lineWidth = 5; ctx.strokeStyle = '#090d16'; ctx.strokeText(char, 0, 3);
+            ctx.fillStyle = '#18181b'; ctx.fillText(char, 0, 3);
+        } else {
+            ctx.lineWidth = 9; ctx.strokeStyle = '#090d16'; ctx.strokeText(char, 0, 3);
+            ctx.fillStyle = '#fef08a'; ctx.fillText(char, 0, 3);
+            ctx.lineWidth = 2; ctx.strokeStyle = '#090d16'; ctx.strokeText(char, 0, 3);
+        }
+    } else {
+        ctx.lineWidth = 9; ctx.strokeStyle = '#090d16'; ctx.strokeText(char, 0, 3);
+        ctx.lineWidth = 3.5; ctx.strokeStyle = '#64748b'; ctx.strokeText(char, 0, 3);
+        ctx.fillStyle = '#1e293b'; ctx.fillText(char, 0, 3);
+    }
+    ctx.restore();
+}
+
+function drawDisc(ctx, disc) {
+    const R = disc.radius;
+    const speedRatio = Math.min(1.0, Math.abs(disc.normVy) / 310);
+    const scaleY = 1.0 - 0.18 * speedRatio;
+
+    ctx.save();
+    ctx.translate(disc.x, disc.y);
+    ctx.scale(1.0, scaleY);
+
+    const lipDepth = (1.0 - scaleY) * 28 + 3.5;
+    ctx.save();
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.58)'; ctx.shadowBlur = 16; ctx.shadowOffsetY = 8;
+    ctx.beginPath(); ctx.arc(0, lipDepth, R, 0, Math.PI * 2);
+    ctx.fillStyle = !disc.isValid ? '#0f141c' : (disc.themeVariant === 0 ? '#3f4d08' : '#571f06');
+    ctx.fill();
+    ctx.restore();
+
+    renderDiscFaceGraphic(ctx, R, disc.isValid, disc.themeVariant, disc.angle, disc.char);
+
+    if (disc.hitStopFrames > 0) {
+        ctx.save();
+        ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.clip();
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.28)'; ctx.fillRect(-R, -R, R * 2, R * 2);
+        ctx.strokeStyle = '#090d16'; ctx.lineWidth = 5.5;
+        [-0.72, 0.82, 2.38, -2.28].forEach((baseA, idx) => {
+            ctx.beginPath(); ctx.moveTo(0, 0);
+            const zig1 = baseA + (idx % 2 === 0 ? 0.16 : -0.16);
+            ctx.lineTo(Math.cos(zig1) * (R * 0.45), Math.sin(zig1) * (R * 0.45));
+            ctx.lineTo(Math.cos(baseA) * (R + 4), Math.sin(baseA) * (R + 4));
+            ctx.stroke();
+        });
+        ctx.restore();
+    }
+    ctx.restore();
+}
+
+/**
+ * 6. 实体类定义
+ */
+class Frisbee {
+    constructor(forceFromLeft = null) {
+        this.radius = 52;
+        const fromLeft = forceFromLeft !== null ? forceFromLeft : Math.random() < 0.5;
+        this.fromLeft = fromLeft;
+        this.x = fromLeft ? 74 : width - 74;
+        this.y = height - 68;
+
+        const apexX = width * (0.26 + Math.random() * 0.48);
+        const apexY = height * (0.18 + Math.random() * 0.24);
+
+        this.baseGravity = 220;
+        const dy = this.y - apexY;
+        this.baseVy = -Math.sqrt(2 * this.baseGravity * dy);
+        const baseTimeToApex = -this.baseVy / this.baseGravity;
+        this.baseVx = (apexX - this.x) / baseTimeToApex;
+
+        this.normVx = this.baseVx;
+        this.normVy = this.baseVy;
+
+        this.isValid = Math.random() < 0.65;
+        this.themeVariant = Math.random() < 0.55 ? 0 : 1;
+
+        if (this.isValid) {
+            const item = activeWordBank.validList[Math.floor(Math.random() * activeWordBank.validList.length)];
+            this.char = item.char; this.fullWord = item.word;
+        } else {
+            const ch = activeWordBank.invalidList[Math.floor(Math.random() * activeWordBank.invalidList.length)];
+            this.char = ch; this.fullWord = activeWordBank.base + ch;
+        }
+
+        this.angle = Math.random() * Math.PI * 2;
+        this.baseSpinSpeed = (fromLeft ? 1 : -1) * (1.2 + Math.random() * 1.0);
+        this.markedForDeletion = false;
+        this.hitStopFrames = 0; this.hitStopTimer = 0; this.hitByPlayerIndex = -1;
+    }
+
+    update(dt) {
+        if (this.hitStopFrames > 0) {
+            this.hitStopTimer -= dt;
+            this.hitStopFrames--;
+            if (this.hitStopFrames <= 0 || this.hitStopTimer <= 0) {
+                shatterDiscAfterHitStop(this);
+                this.markedForDeletion = true;
+            }
+            return;
+        }
+
+        const speedScale = CONFIG.speedScale;
+        const floatThreshold = 165;
+        let apexTimeScale = 1.0;
+        if (Math.abs(this.normVy) < floatThreshold) {
+            const factor = Math.abs(this.normVy) / floatThreshold;
+            const minTimeScale = Math.max(0.08, 1.0 - CONFIG.apexDamping);
+            apexTimeScale = minTimeScale + (1.0 - minTimeScale) * Math.pow(factor, 2.0);
+        }
+
+        const effectiveDt = dt * speedScale * apexTimeScale;
+        this.x += this.normVx * effectiveDt;
+        this.y += this.normVy * effectiveDt;
+        this.normVy += this.baseGravity * effectiveDt;
+        this.angle += this.baseSpinSpeed * effectiveDt;
+
+        if (this.y > height + this.radius + 50 && this.normVy > 0) {
+            this.markedForDeletion = true;
+        }
+    }
+
+    draw(ctx) { drawDisc(ctx, this); }
+}
+
+class LauncherMuzzleRing {
+    constructor(x, y, angle) {
+        this.x = x; this.y = y; this.angle = angle;
+        this.vx = Math.cos(angle) * 140; this.vy = Math.sin(angle) * 140;
+        this.radius = 12; this.maxRadius = 38;
+        this.life = 0; this.duration = 0.28; this.alpha = 0.85;
+    }
+    update(dt) {
+        this.life += dt;
+        const p = Math.min(1.0, this.life / this.duration);
+        this.x += this.vx * dt * (1 - p * 0.6);
+        this.y += this.vy * dt * (1 - p * 0.6);
+        this.radius = 12 + (this.maxRadius - 12) * (1 - Math.pow(1 - p, 2));
+        this.alpha = 0.85 * (1 - p);
+    }
+    draw(ctx) {
+        if (this.alpha <= 0.01) return;
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.angle + Math.PI / 2);
+        ctx.scale(1.0, 0.52);
+        ctx.strokeStyle = `rgba(248, 250, 252, ${this.alpha})`;
+        ctx.lineWidth = 2.2;
+        ctx.beginPath(); ctx.arc(0, 0, this.radius, 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
+    }
+}
+
+function spawnFrisbeeFromLauncher(forceFromLeft = null) {
+    const f = new Frisbee(forceFromLeft);
+    frisbees.push(f);
+    const launcher = launchers[f.fromLeft ? 0 : 1];
+    launcher.recoil = 1.0;
+    const shootAngle = Math.atan2(f.baseVy, f.baseVx);
+    launcher.angle = shootAngle;
+    launcherRings.push(new LauncherMuzzleRing(f.x, f.y, shootAngle));
+    sfx.playLaunch();
+}
+
+class DiscSectorShard {
+    constructor(disc, quadrantIndex) {
+        this.x = disc.x; this.y = disc.y; this.radius = disc.radius;
+        this.isValid = disc.isValid; this.themeVariant = disc.themeVariant;
+        this.discAngle = disc.angle; this.char = disc.char;
+
+        const baseStart = quadrantIndex * (Math.PI / 2) - Math.PI * 0.22;
+        this.startAngle = baseStart;
+        this.endAngle = baseStart + Math.PI / 2;
+        const midAngle = (this.startAngle + this.endAngle) / 2;
+        this.jag1Angle = baseStart + 0.14;
+        this.jag2Angle = this.endAngle - 0.14;
+
+        const ejectSpeed = 135 + Math.random() * 85;
+        this.vx = Math.cos(midAngle) * ejectSpeed;
+        this.vy = Math.sin(midAngle) * ejectSpeed - 35;
+        this.gravity = 380;
+        this.shardRotation = 0;
+        this.rotSpeed = (quadrantIndex % 2 === 0 ? 1 : -1) * (2.2 + Math.random() * 2.0);
+        this.x += Math.cos(midAngle) * 5;
+        this.y += Math.sin(midAngle) * 5;
+        this.alpha = 1.0; this.decay = 1.55;
+    }
+    update(dt) {
+        this.x += this.vx * dt; this.y += this.vy * dt;
+        this.vy += this.gravity * dt;
+        this.shardRotation += this.rotSpeed * dt;
+        this.alpha -= this.decay * dt;
+    }
+    draw(ctx) {
+        if (this.alpha <= 0) return;
+        const R = this.radius;
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, this.alpha);
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.shardRotation);
+
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(Math.cos(this.jag1Angle) * (R * 0.42), Math.sin(this.jag1Angle) * (R * 0.42));
+        ctx.lineTo(Math.cos(this.startAngle) * (R + 3), Math.sin(this.startAngle) * (R + 3));
+        ctx.arc(0, 0, R + 3, this.startAngle, this.endAngle, false);
+        ctx.lineTo(Math.cos(this.jag2Angle) * (R * 0.48), Math.sin(this.jag2Angle) * (R * 0.48));
+        ctx.closePath();
+
+        ctx.save(); ctx.clip();
+        renderDiscFaceGraphic(ctx, R, this.isValid, this.themeVariant, this.discAngle, this.char);
+        ctx.restore();
+
+        ctx.strokeStyle = '#090d16'; ctx.lineWidth = 2.5; ctx.stroke();
+        ctx.restore();
+    }
+}
+
+class ShockwaveRing {
+    constructor(x, y) {
+        this.x = x; this.y = y;
+        this.radius = 22; this.maxRadius = 92;
+        this.alpha = 0.88; this.life = 0; this.duration = 0.34;
+    }
+    update(dt) {
+        this.life += dt;
+        const p = Math.min(1.0, this.life / this.duration);
+        this.radius = 22 + (this.maxRadius - 22) * (1 - Math.pow(1 - p, 3));
+        this.alpha = 0.88 * (1 - p);
+    }
+    draw(ctx) {
+        if (this.alpha <= 0.01) return;
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.strokeStyle = `rgba(241, 245, 249, ${this.alpha * 0.85})`;
+        ctx.lineWidth = 1.6;
+        ctx.beginPath(); ctx.arc(0, 0, this.radius, 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
+    }
+}
+
+class FlyingPhraseToken {
+    constructor(startX, startY, fullWord, playerIndex) {
+        this.playerIndex = playerIndex;
+        this.player = players[playerIndex];
+        this.fullWord = fullWord;
+        this.startX = startX; this.startY = startY;
+        this.x = startX; this.y = startY;
+        this.targetSlotIdx = Math.min(RACK_SLOT_COUNT - 1, this.player.collectedWords.length);
+        this.ctrlOffsetY = -95;
+        this.elapsed = 0; this.holdDuration = 0.16; this.flyDuration = 0.52;
+        this.scale = 0.5; this.finished = false;
+    }
+    update(dt) {
+        this.elapsed += dt;
+        const rackGeo = getPlayerRackGeometry(this.playerIndex);
+        const targetPos = rackGeo.getSlotCenter(this.targetSlotIdx);
+
+        if (this.elapsed <= this.holdDuration) {
+            const t = this.elapsed / this.holdDuration;
+            this.scale = 0.6 + 0.52 * Math.sin(t * Math.PI * 0.65);
+            this.x = this.startX;
+            this.y = this.startY - t * 12;
+        } else {
+            const rawT = Math.min(1.0, (this.elapsed - this.holdDuration) / this.flyDuration);
+            const easeT = rawT < 0.5 ? 4 * rawT * rawT * rawT : 1 - Math.pow(-2 * rawT + 2, 3) / 2;
+            const p0x = this.startX, p0y = this.startY - 12;
+            const p2x = targetPos.x, p2y = targetPos.y;
+            const p1x = (p0x + p2x) * 0.5, p1y = Math.min(p0y, p2y) + this.ctrlOffsetY;
+            const invT = 1 - easeT;
+            this.x = invT * invT * p0x + 2 * invT * easeT * p1x + easeT * easeT * p2x;
+            this.y = invT * invT * p0y + 2 * invT * easeT * p1y + easeT * easeT * p2y;
+            this.scale = 1.12 - 0.12 * easeT;
+
+            if (rawT >= 1.0 && !this.finished) {
+                this.finished = true;
+                this.player.score += 100;
+                this.player.scoreFlashTimer = 0.40;
+                sfx.playScoreFlash();
+                if (this.player.collectedWords.length >= RACK_SLOT_COUNT) {
+                    this.player.collectedWords.shift();
+                }
+                this.player.collectedWords.push({ word: this.fullWord, flash: 1.0 });
+            }
+        }
+    }
+    draw(ctx) {
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.scale(this.scale, this.scale);
+        drawPhraseBadgeGraphic(ctx, 128, 40, this.fullWord, this.playerIndex, 1.0);
+        ctx.restore();
+    }
+}
+
+function drawPhraseBadgeGraphic(ctx, w, h, wordText, playerIndex, flashIntensity = 0) {
+    const isP1 = playerIndex === 0;
+    const halfW = w / 2, halfH = h / 2;
+    ctx.save();
+    ctx.shadowColor = isP1 ? 'rgba(250, 204, 21, 0.55)' : 'rgba(217, 70, 239, 0.55)';
+    ctx.shadowBlur = 10 + flashIntensity * 14;
+
+    ctx.fillStyle = isP1 ? '#f8fafc' : '#f5d0fe';
+    ctx.strokeStyle = '#090d16'; ctx.lineWidth = 2.2;
+    ctx.beginPath(); ctx.roundRect(-halfW, -halfH, w, h, 8); ctx.fill(); ctx.stroke();
+
+    ctx.shadowBlur = 0;
+    const pad = 3.2;
+    const grad = ctx.createLinearGradient(0, -halfH + pad, 0, halfH - pad);
+    if (isP1) {
+        grad.addColorStop(0, '#fef08a'); grad.addColorStop(0.5, '#facc15'); grad.addColorStop(1, '#eab308');
+    } else {
+        grad.addColorStop(0, '#e879f9'); grad.addColorStop(0.5, '#d946ef'); grad.addColorStop(1, '#a21caf');
+    }
+    ctx.fillStyle = grad;
+    ctx.beginPath(); ctx.roundRect(-halfW + pad, -halfH + pad, w - pad * 2, h - pad * 2, 5.5); ctx.fill();
+
+    ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
+    ctx.font = '900 20px "PingFang SC", "Microsoft YaHei", sans-serif';
+    ctx.textAlign = 'left'; ctx.lineWidth = 5.5; ctx.strokeStyle = '#090d16';
+    ctx.strokeText(wordText, -halfW + 12, 1.5);
+    ctx.fillStyle = '#ffffff'; ctx.fillText(wordText, -halfW + 12, 1.5);
+
+    ctx.font = '900 17px "Arial Black", sans-serif';
+    ctx.textAlign = 'right'; ctx.lineWidth = 5.0;
+    ctx.strokeText('+10', halfW - 10, 2);
+    ctx.fillStyle = isP1 ? '#fef9c3' : '#fae8ff';
+    ctx.fillText('+10', halfW - 10, 2);
+    ctx.restore();
+}
+
+class ShardParticle {
+    constructor(x, y, color) {
+        this.x = x; this.y = y;
+        const a = Math.random() * Math.PI * 2, spd = 75 + Math.random() * 190;
+        this.vx = Math.cos(a) * spd; this.vy = Math.sin(a) * spd - 40;
+        this.gravity = 520; this.color = color; this.alpha = 1;
+        this.decay = 1.8 + Math.random() * 0.8;
+        this.rotation = Math.random() * Math.PI * 2;
+        this.rotSpeed = (Math.random() - 0.5) * 14;
+        this.size = 5 + Math.random() * 7;
+    }
+    update(dt) {
+        this.x += this.vx * dt; this.y += this.vy * dt;
+        this.vy += this.gravity * dt;
+        this.rotation += this.rotSpeed * dt;
+        this.alpha -= this.decay * dt;
+    }
+    draw(ctx) {
+        if (this.alpha <= 0) return;
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, this.alpha);
+        ctx.translate(this.x, this.y); ctx.rotate(this.rotation);
+        ctx.fillStyle = this.color; ctx.strokeStyle = '#090d16'; ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(-this.size / 2, -this.size / 2);
+        ctx.lineTo(this.size / 2, 0);
+        ctx.lineTo(0, this.size / 2);
+        ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.restore();
+    }
+}
+
+class FloatingText {
+    constructor(x, y, text, color) {
+        this.x = x; this.y = y; this.text = text; this.color = color;
+        this.alpha = 1.0; this.vy = -50;
+    }
+    update(dt) { this.y += this.vy * dt; this.alpha -= 1.2 * dt; }
+    draw(ctx) {
+        if (this.alpha <= 0) return;
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, this.alpha);
+        ctx.font = 'bold 20px "PingFang SC", "Microsoft YaHei", sans-serif';
+        ctx.fillStyle = this.color; ctx.textAlign = 'center';
+        ctx.shadowColor = 'rgba(0,0,0,0.7)'; ctx.shadowBlur = 4;
+        ctx.fillText(this.text, this.x, this.y);
+        ctx.restore();
+    }
+}
+
+function spawnSmallDebris(x, y, palette, count = 10) {
+    for (let i = 0; i < count; i++) particles.push(new ShardParticle(x, y, palette[i % palette.length]));
+}
+
+function shatterDiscAfterHitStop(disc) {
+    for (let q = 0; q < 4; q++) discSectorShards.push(new DiscSectorShard(disc, q));
+    const shardColors = disc.themeVariant === 0 ? ['#eab308', '#14b8a6', '#fef08a'] : ['#f97316', '#ea580c', '#2dd4bf'];
+    spawnSmallDebris(disc.x, disc.y, shardColors, 10);
+    shockwaveRings.push(new ShockwaveRing(disc.x, disc.y));
+
+    if (disc.hitByPlayerIndex >= 0) {
+        players[disc.hitByPlayerIndex].scoreFlashTimer = 0.40;
+        flyingTokens.push(new FlyingPhraseToken(disc.x, disc.y, disc.fullWord, disc.hitByPlayerIndex));
+    }
+}
+
+function triggerFire(playerIndex) {
+    const p = players[playerIndex];
+    if (p.cooldown > 0) return;
+
+    p.firePulse = 1.0;
+    sfx.playLaser(playerIndex === 0);
+
+    for (let i = frisbees.length - 1; i >= 0; i--) {
+        const f = frisbees[i];
+        if (f.hitStopFrames > 0) continue;
+        if (Math.hypot(p.x - f.x, p.y - f.y) <= f.radius + 4) {
+            if (f.isValid) {
+                sfx.playHitValid();
+                f.hitStopFrames = 3;
+                f.hitStopTimer = 0.05;
+                f.hitByPlayerIndex = playerIndex;
+            } else {
+                sfx.playHitWrong();
+                p.cooldown = p.maxCooldown;
+                p.damageFlash = 1.0;
+                p.hp = Math.max(1, p.hp - 1);
+                for (let q = 0; q < 4; q++) discSectorShards.push(new DiscSectorShard(f, q));
+                shockwaveRings.push(new ShockwaveRing(f.x, f.y));
+                spawnSmallDebris(f.x, f.y, ['#475569', '#eab308', '#1e293b'], 8);
+                floatingTexts.push(new FloatingText(f.x, f.y - 10, `✗ 误击【${f.char}】 HP-1 & 冷却!`, '#f87171'));
+                frisbees.splice(i, 1);
+            }
+            break;
+        }
+    }
+}
+
+/**
+ * 8. 阶段四：1:1 还原《06 分数与血条/生命槽组件》与工业发射器
+ */
+function traceChamferRect(ctx, x, y, w, h, c) {
+    ctx.beginPath();
+    ctx.moveTo(x + c, y); ctx.lineTo(x + w - c, y);
+    ctx.lineTo(x + w, y + c); ctx.lineTo(x + w, y + h - c);
+    ctx.lineTo(x + w - c, y + h); ctx.lineTo(x + c, y + h);
+    ctx.lineTo(x, y + h - c); ctx.lineTo(x, y + c);
+    ctx.closePath();
+}
+
+function drawMetalFastener(ctx, cx, cy, r = 4.2, accentColor = null) {
+    ctx.save();
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fillStyle = '#1e293b'; ctx.fill();
+    ctx.lineWidth = 1.2; ctx.strokeStyle = accentColor || '#090d16'; ctx.stroke();
+    ctx.strokeStyle = '#64748b'; ctx.lineWidth = 1.0;
+    ctx.beginPath();
+    ctx.moveTo(cx - r * 0.5, cy - r * 0.5); ctx.lineTo(cx + r * 0.5, cy + r * 0.5);
+    ctx.moveTo(cx + r * 0.5, cy - r * 0.5); ctx.lineTo(cx - r * 0.5, cy + r * 0.5);
+    ctx.stroke();
+    ctx.restore();
+}
+
+function drawHazardStripeBar(ctx, x, y, w, h, stripeColor) {
+    ctx.save();
+    ctx.beginPath(); ctx.roundRect(x, y, w, h, 2); ctx.clip();
+    ctx.fillStyle = '#0f172a'; ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = stripeColor;
+    for (let sx = x - h; sx < x + w + h; sx += 11) {
+        ctx.beginPath();
+        ctx.moveTo(sx, y + h); ctx.lineTo(sx + 5.5, y + h);
+        ctx.lineTo(sx + 5.5 + h * 0.75, y); ctx.lineTo(sx + h * 0.75, y);
+        ctx.closePath(); ctx.fill();
+    }
+    ctx.strokeStyle = '#090d16'; ctx.lineWidth = 1; ctx.strokeRect(x, y, w, h);
+    ctx.restore();
+}
+
+function drawPlayerScoreAndHealthHUD(ctx, playerIndex) {
+    const p = players[playerIndex];
+    const isP1 = playerIndex === 0;
+    const themeColor = p.color;
+    const brightColor = p.accentColor;
+    const isLowHp = p.hp <= 2;
+    const pulseBlink = 0.55 + 0.45 * Math.sin(performance.now() * 0.012);
+
+    const badgeW = 94, badgeH = 104, bridgeW = 10, stackW = 192;
+    const lifeTrayH = 47, scoreTrayH = 51, trayGap = 6, topY = 16;
+
+    let badgeX, bridgeX, stackX;
+    if (isP1) {
+        badgeX = 20;
+        bridgeX = badgeX + badgeW - 2;
+        stackX = bridgeX + bridgeW - 2;
+    } else {
+        badgeX = width - 20 - badgeW;
+        bridgeX = badgeX - bridgeW + 2;
+        stackX = bridgeX - stackW + 2;
+    }
+
+    ctx.save();
+
+    // 连接桥架
+    ctx.fillStyle = '#1e293b'; ctx.strokeStyle = '#090d16'; ctx.lineWidth = 2;
+    ctx.fillRect(bridgeX, topY + 18, bridgeW, badgeH - 36);
+    ctx.strokeRect(bridgeX, topY + 18, bridgeW, badgeH - 36);
+
+    // 方形金属徽章框
+    ctx.save();
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.55)'; ctx.shadowBlur = 12; ctx.shadowOffsetY = 5;
+    const casingGrad = ctx.createLinearGradient(badgeX, topY, badgeX, topY + badgeH);
+    casingGrad.addColorStop(0, '#475569'); casingGrad.addColorStop(0.5, '#334155'); casingGrad.addColorStop(1, '#1e293b');
+    traceChamferRect(ctx, badgeX, topY, badgeW, badgeH, 9);
+    ctx.fillStyle = casingGrad; ctx.fill();
+    ctx.lineWidth = 2.5; ctx.strokeStyle = '#090d16'; ctx.stroke();
+    ctx.restore();
+
+    ctx.fillStyle = themeColor;
+    ctx.fillRect(badgeX + 18, topY + 1, badgeW - 36, 3);
+    ctx.fillRect(badgeX + 16, topY + badgeH - 4, badgeW - 32, 3);
+
+    traceChamferRect(ctx, badgeX + 6, topY + 6, badgeW - 12, badgeH - 12, 6);
+    ctx.fillStyle = isP1 ? '#262f26' : '#281d33'; ctx.fill();
+    ctx.lineWidth = 1.5; ctx.strokeStyle = themeColor; ctx.stroke();
+
+    drawMetalFastener(ctx, badgeX + 12, topY + 12, 3.8, themeColor);
+    drawMetalFastener(ctx, badgeX + badgeW - 12, topY + 12, 3.8, themeColor);
+    drawMetalFastener(ctx, badgeX + 12, topY + badgeH - 12, 3.8, themeColor);
+    drawMetalFastener(ctx, badgeX + badgeW - 12, topY + badgeH - 12, 3.8, themeColor);
+
+    ctx.strokeStyle = themeColor; ctx.lineWidth = 1.2;
+    for (let t = 0; t < 5; t++) {
+        const ty = topY + 34 + t * 5;
+        ctx.beginPath(); ctx.moveTo(badgeX + 10, ty); ctx.lineTo(badgeX + 14, ty); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(badgeX + badgeW - 14, ty); ctx.lineTo(badgeX + badgeW - 10, ty); ctx.stroke();
+    }
+
+    ctx.save();
+    ctx.shadowColor = themeColor; ctx.shadowBlur = 10;
+    ctx.fillStyle = themeColor;
+    ctx.font = '900 40px "Arial Black", "Impact", "PingFang SC", sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(p.name, badgeX + badgeW / 2, topY + 46);
+    ctx.restore();
+
+    ctx.fillStyle = themeColor; ctx.font = 'bold 6px monospace'; ctx.textAlign = 'center';
+    ctx.fillText(p.hasJoyCon ? 'GYRO:ONLINE' : 'MODE:LOCAL', badgeX + badgeW / 2, topY + 72);
+
+    drawHazardStripeBar(ctx, badgeX + 18, topY + badgeH - 22, badgeW - 36, 9, themeColor);
+
+    // 上层托盘：8 格分段式生命槽
+    const lifeY = topY;
+    ctx.save();
+    ctx.shadowColor = isLowHp ? 'rgba(239, 68, 68, 0.45)' : 'rgba(0, 0, 0, 0.5)';
+    ctx.shadowBlur = 10; ctx.shadowOffsetY = 4;
+    traceChamferRect(ctx, stackX, lifeY, stackW, lifeTrayH, 8);
+    ctx.fillStyle = isLowHp ? '#3b1d24' : '#334155'; ctx.fill();
+    ctx.lineWidth = 2.2; ctx.strokeStyle = isLowHp ? '#ef4444' : '#090d16'; ctx.stroke();
+    ctx.restore();
+
+    drawMetalFastener(ctx, stackX + 7, lifeY + 7, 2.6);
+    drawMetalFastener(ctx, stackX + stackW - 7, lifeY + 7, 2.6);
+    drawMetalFastener(ctx, stackX + 7, lifeY + lifeTrayH - 7, 2.6);
+    drawMetalFastener(ctx, stackX + stackW - 7, lifeY + lifeTrayH - 7, 2.6);
+
+    ctx.beginPath(); ctx.roundRect(stackX + 6, lifeY + 6, stackW - 12, lifeTrayH - 12, 5);
+    ctx.fillStyle = '#090d16'; ctx.fill();
+    ctx.lineWidth = 1.2; ctx.strokeStyle = isLowHp ? 'rgba(239, 68, 68, 0.7)' : 'rgba(148, 163, 184, 0.35)'; ctx.stroke();
+
+    const segW = 16, segH = 25, segGap = 4.5;
+    const segStartX = stackX + 13, segY = lifeY + (lifeTrayH - segH) / 2;
+
+    for (let i = 0; i < 8; i++) {
+        if (isLowHp && i >= 6) continue;
+        const sx = segStartX + i * (segW + segGap);
+        if (i < p.hp) {
+            ctx.save();
+            if (isLowHp) {
+                ctx.shadowColor = '#ef4444'; ctx.shadowBlur = 8 * pulseBlink;
+                const lowGrad = ctx.createLinearGradient(sx, segY, sx, segY + segH);
+                lowGrad.addColorStop(0, '#fde047'); lowGrad.addColorStop(0.5, '#f97316'); lowGrad.addColorStop(1, '#dc2626');
+                ctx.fillStyle = lowGrad;
+                ctx.beginPath(); ctx.roundRect(sx, segY, segW, segH, 3); ctx.fill();
+            } else {
+                ctx.shadowColor = themeColor; ctx.shadowBlur = 8;
+                const segGrad = ctx.createLinearGradient(sx, segY, sx, segY + segH);
+                segGrad.addColorStop(0, brightColor); segGrad.addColorStop(0.5, themeColor);
+                segGrad.addColorStop(1, isP1 ? '#ca8a04' : '#a21caf');
+                ctx.fillStyle = segGrad;
+                ctx.beginPath(); ctx.roundRect(sx, segY, segW, segH, 3); ctx.fill();
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+                ctx.fillRect(sx + 4, segY + 3, segW - 8, segH - 6);
+            }
+            ctx.restore();
+        } else {
+            ctx.fillStyle = '#161e2e'; ctx.strokeStyle = '#334155'; ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.roundRect(sx, segY, segW, segH, 3); ctx.fill(); ctx.stroke();
+        }
+    }
+
+    if (isLowHp) {
+        ctx.save();
+        ctx.globalAlpha = 0.65 + 0.35 * pulseBlink;
+        ctx.shadowColor = '#ef4444'; ctx.shadowBlur = 8;
+        ctx.fillStyle = '#ef4444'; ctx.textAlign = 'center';
+        ctx.font = '900 13px "Arial Black", sans-serif';
+        ctx.fillText('LOW', stackX + stackW - 26, lifeY + 21);
+        ctx.font = 'bold 9px "PingFang SC", sans-serif';
+        ctx.fillText('(警告)', stackX + stackW - 26, lifeY + 33);
+        ctx.restore();
+    }
+
+    // 下层托盘：数显分数板
+    const scoreY = lifeY + lifeTrayH + trayGap;
+    const isScoreFlashing = p.scoreFlashTimer > 0;
+    const flashRatio = Math.max(0, Math.min(1, p.scoreFlashTimer / 0.40));
+
+    ctx.save();
+    ctx.shadowColor = isScoreFlashing ? themeColor : 'rgba(0, 0, 0, 0.55)';
+    ctx.shadowBlur = isScoreFlashing ? 18 : 10; ctx.shadowOffsetY = 4;
+    traceChamferRect(ctx, stackX, scoreY, stackW, scoreTrayH, 8);
+    ctx.fillStyle = '#334155'; ctx.fill();
+    ctx.lineWidth = 2.2; ctx.strokeStyle = isScoreFlashing ? brightColor : '#090d16'; ctx.stroke();
+    ctx.restore();
+
+    ctx.strokeStyle = themeColor; ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(stackX + 10, scoreY + scoreTrayH + 1);
+    ctx.lineTo(stackX + stackW - 10, scoreY + scoreTrayH + 1);
+    ctx.stroke();
+
+    const screenX = stackX + 7, screenY = scoreY + 6, screenW = stackW - 14, screenH = scoreTrayH - 12;
+    ctx.beginPath(); ctx.roundRect(screenX, screenY, screenW, screenH, 5);
+    ctx.fillStyle = '#070a12'; ctx.fill();
+    ctx.lineWidth = 1.5; ctx.strokeStyle = isScoreFlashing ? brightColor : themeColor; ctx.stroke();
+
+    ctx.save();
+    ctx.fillStyle = themeColor; ctx.shadowColor = themeColor; ctx.shadowBlur = 6;
+    ctx.beginPath(); ctx.arc(screenX + screenW - 11, screenY + screenH / 2, 2.4, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+
+    ctx.font = '900 30px "Courier New", "Consolas", monospace';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = isP1 ? 'rgba(250, 204, 21, 0.07)' : 'rgba(217, 70, 239, 0.07)';
+    ctx.fillText('8888', screenX + screenW / 2 - 4, screenY + screenH / 2 + 1);
+
+    ctx.save();
+    ctx.shadowColor = themeColor; ctx.shadowBlur = isScoreFlashing ? 16 : 8;
+    ctx.fillStyle = isScoreFlashing ? brightColor : themeColor;
+    if (isP1 && isScoreFlashing && flashRatio > 0.35) {
+        ctx.font = '900 22px "Arial Black", "Impact", sans-serif';
+        ctx.fillText('SCORE UP!', screenX + screenW / 2 - 4, screenY + screenH / 2 + 1);
+    } else {
+        ctx.font = '900 30px "Courier New", "Consolas", monospace';
+        ctx.fillText(`${p.score}`, screenX + screenW / 2 - 4, screenY + screenH / 2 + 1);
+    }
+    ctx.restore();
+
+    if (isScoreFlashing) {
+        ctx.save();
+        ctx.globalAlpha = flashRatio;
+        if (isP1) {
+            const expand = (1 - flashRatio) * 8;
+            ctx.strokeStyle = '#fef08a'; ctx.lineWidth = 2.2;
+            ctx.shadowColor = '#facc15'; ctx.shadowBlur = 14;
+            ctx.beginPath();
+            ctx.roundRect(stackX - 4 - expand, scoreY - 4 - expand, stackW + 8 + expand * 2, scoreTrayH + 8 + expand * 2, 11);
+            ctx.stroke();
+
+            ctx.save();
+            ctx.translate(stackX + stackW - 18, scoreY + scoreTrayH + 8);
+            ctx.rotate(-0.10);
+            ctx.fillStyle = '#090d16'; ctx.strokeStyle = '#facc15'; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.roundRect(-44, -10, 88, 20, 4); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = '#fef08a'; ctx.font = '900 italic 11px "Arial Black", sans-serif';
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText('SCORE UP!', 0, 0);
+            ctx.restore();
+        } else {
+            const starCoords = [
+                [stackX - 10, scoreY + 8, 7], [stackX + stackW + 10, scoreY + 12, 8],
+                [stackX + 16, scoreY + scoreTrayH + 9, 6], [stackX + stackW - 22, scoreY - 7, 7]
+            ];
+            ctx.fillStyle = '#f5d0fe'; ctx.shadowColor = '#d946ef'; ctx.shadowBlur = 10;
+            starCoords.forEach(([sx, sy, sr]) => {
+                ctx.beginPath();
+                ctx.moveTo(sx, sy - sr); ctx.quadraticCurveTo(sx, sy, sx + sr, sy);
+                ctx.quadraticCurveTo(sx, sy, sx, sy + sr); ctx.quadraticCurveTo(sx, sy, sx - sr, sy);
+                ctx.quadraticCurveTo(sx, sy, sx, sy - sr); ctx.closePath(); ctx.fill();
+            });
+
+            [[stackX + 12, scoreY + 2, -0.18], [stackX + stackW - 16, scoreY + scoreTrayH - 2, -0.14]].forEach(([bx, by, rot]) => {
+                ctx.save();
+                ctx.translate(bx, by); ctx.rotate(rot);
+                ctx.fillStyle = '#d946ef'; ctx.strokeStyle = '#090d16'; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.roundRect(-30, -9, 60, 18, 4); ctx.fill(); ctx.stroke();
+                ctx.fillStyle = '#ffffff'; ctx.font = '900 italic 11px "Arial Black", sans-serif';
+                ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                ctx.fillText('SCORE!', 0, 0);
+                ctx.restore();
+            });
+        }
+        ctx.restore();
+    }
+    ctx.restore();
+}
+
+function drawIndustrialLaunchers(ctx) {
+    launchers.forEach((launcher, idx) => {
+        const isLeft = idx === 0;
+        const themeColor = isLeft ? '#facc15' : '#d946ef';
+        const recoilShift = launcher.recoil * 14;
+        const aimAngle = isLeft ? -Math.PI * 0.32 : -Math.PI * 0.68;
+
+        ctx.save();
+        ctx.save();
+        const pivotX = isLeft ? 44 : width - 44;
+        const pivotY = height - 42;
+        ctx.translate(pivotX, pivotY);
+        ctx.rotate(aimAngle);
+        ctx.translate(-recoilShift, 0);
+
+        const barrelGrad = ctx.createLinearGradient(0, -22, 0, 22);
+        barrelGrad.addColorStop(0, '#64748b'); barrelGrad.addColorStop(0.5, '#334155'); barrelGrad.addColorStop(1, '#0f172a');
+        ctx.fillStyle = barrelGrad; ctx.strokeStyle = '#090d16'; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.roundRect(0, -20, 52, 40, 5); ctx.fill(); ctx.stroke();
+
+        ctx.fillStyle = '#1e293b'; ctx.fillRect(40, -23, 14, 46); ctx.strokeRect(40, -23, 14, 46);
+        ctx.fillStyle = themeColor; ctx.fillRect(10, -4, 26, 8);
+        ctx.restore();
+
+        ctx.save();
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.65)'; ctx.shadowBlur = 14;
+        ctx.beginPath();
+        if (isLeft) {
+            ctx.moveTo(0, height - 88); ctx.lineTo(58, height - 88);
+            ctx.lineTo(88, height - 58); ctx.lineTo(88, height); ctx.lineTo(0, height);
+        } else {
+            ctx.moveTo(width, height - 88); ctx.lineTo(width - 58, height - 88);
+            ctx.lineTo(width - 88, height - 58); ctx.lineTo(width - 88, height); ctx.lineTo(width, height);
+        }
+        ctx.closePath();
+        const baseGrad = ctx.createLinearGradient(0, height - 88, 0, height);
+        baseGrad.addColorStop(0, '#475569'); baseGrad.addColorStop(0.5, '#334155'); baseGrad.addColorStop(1, '#1e293b');
+        ctx.fillStyle = baseGrad; ctx.fill();
+        ctx.lineWidth = 3; ctx.strokeStyle = '#090d16'; ctx.stroke();
+        ctx.restore();
+
+        if (isLeft) {
+            drawHazardStripeBar(ctx, 10, height - 24, 64, 12, themeColor);
+            drawMetalFastener(ctx, 14, height - 74, 4.0, themeColor);
+            drawMetalFastener(ctx, 50, height - 74, 4.0, themeColor);
+            drawMetalFastener(ctx, 74, height - 48, 4.0, themeColor);
+        } else {
+            drawHazardStripeBar(ctx, width - 74, height - 24, 64, 12, themeColor);
+            drawMetalFastener(ctx, width - 14, height - 74, 4.0, themeColor);
+            drawMetalFastener(ctx, width - 50, height - 74, 4.0, themeColor);
+            drawMetalFastener(ctx, width - 74, height - 48, 4.0, themeColor);
+        }
+        ctx.restore();
+    });
+}
+
+function drawCollectionRack(ctx, playerIndex) {
+    const p = players[playerIndex];
+    const geo = getPlayerRackGeometry(playerIndex);
+    const { rackX, rackY, rackW, rackH } = geo;
+
+    ctx.save();
+    ctx.shadowColor = p.color; ctx.shadowBlur = 14;
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.82)';
+    ctx.strokeStyle = p.color; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.roundRect(rackX, rackY, rackW, rackH, 10); ctx.fill(); ctx.stroke();
+
+    ctx.shadowBlur = 0; ctx.fillStyle = p.rackBg;
+    ctx.beginPath(); ctx.roundRect(rackX + 3, rackY + 3, rackW - 6, rackH - 6, 8); ctx.fill();
+
+    [[rackX + 8, rackY + 8], [rackX + rackW - 8, rackY + 8], [rackX + 8, rackY + rackH - 8], [rackX + rackW - 8, rackY + rackH - 8]].forEach(([rx, ry]) => {
+        ctx.beginPath(); ctx.arc(rx, ry, 2.2, 0, Math.PI * 2); ctx.fillStyle = p.color; ctx.fill();
+    });
+
+    ctx.fillStyle = p.accentColor;
+    ctx.font = 'bold 11px "PingFang SC", monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(`${p.name} 词组收集槽 (${p.collectedWords.length}/${RACK_SLOT_COUNT})`, rackX + rackW / 2, rackY + 19);
+
+    for (let i = 0; i < RACK_SLOT_COUNT; i++) {
+        const slotRect = geo.getSlotRect(i);
+        const collectedItem = p
