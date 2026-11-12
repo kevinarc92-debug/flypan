@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>双人汉字飞盘射击 - 阶段四：工业机甲HUD、发射器与合成音效完整版</title>
+    <title>双人汉字飞盘射击 - 阶段三：打击顿帧、扇形碎裂与战利品词条收集</title>
     <style>
         * {
             margin: 0;
@@ -23,22 +23,21 @@
             cursor: none; /* 游戏区域内隐藏原生鼠标，使用自定义准星 */
         }
 
-        /* 顶部居中偏右工具按钮栏 (避开左上P1与右上P2工业HUD面板) */
+        /* 顶部右侧快捷栏 */
         #ui-bar {
             position: absolute;
-            top: 14px;
-            left: 50%;
-            transform: translateX(-50%);
-            z-index: 15;
+            top: 16px;
+            right: 20px;
+            z-index: 10;
             display: flex;
-            gap: 8px;
+            gap: 10px;
             align-items: center;
         }
 
-        /* 左上角可折叠设置面板容器 (位于 P1 工业 HUD 正下方) */
+        /* 左上角可折叠设置面板容器 */
         #settings-wrapper {
             position: absolute;
-            top: 142px;
+            top: 16px;
             left: 20px;
             z-index: 20;
             display: flex;
@@ -48,16 +47,16 @@
         }
 
         .btn {
-            background: rgba(15, 23, 42, 0.90);
-            color: #cbd5e1;
+            background: rgba(30, 41, 59, 0.88);
+            color: #e2e8f0;
             border: 1px solid #475569;
-            padding: 6px 12px;
+            padding: 8px 14px;
             border-radius: 6px;
-            font-size: 12px;
+            font-size: 13px;
             cursor: pointer;
             transition: all 0.2s;
             backdrop-filter: blur(6px);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
         }
         .btn:hover {
             background: #334155;
@@ -91,15 +90,15 @@
         #settings-panel {
             margin-top: 8px;
             width: 355px;
-            max-height: calc(100vh - 190px);
+            max-height: calc(100vh - 80px);
             overflow-y: auto;
-            background: rgba(15, 23, 42, 0.96);
+            background: rgba(15, 23, 42, 0.95);
             border: 1px solid #334155;
             border-radius: 10px;
             padding: 16px;
             color: #f8fafc;
-            backdrop-filter: blur(12px);
-            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.65);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
             transition: opacity 0.2s ease, transform 0.2s ease;
             transform-origin: top left;
         }
@@ -219,30 +218,13 @@
 </head>
 <body>
 
-<!-- 左上角 P1 HUD 下方：可折叠设置与题库面板 -->
+<!-- 左上角：可折叠设置与题库面板 -->
 <div id="settings-wrapper">
     <button id="btn-toggle-settings" class="btn">⚙️ 设置</button>
     
     <div id="settings-panel" class="collapsed">
-        <!-- 音效控制区 -->
-        <div class="panel-section-title">
-            <span>🔊 Web Audio 合成音效控制</span>
-        </div>
-
-        <div class="control-group">
-            <div class="control-label">
-                <span>合成音效主音量</span>
-                <span id="val-volume" class="control-val">75%</span>
-            </div>
-            <input type="range" id="slider-volume" min="0.0" max="1.0" step="0.05" value="0.75">
-            <div class="checkbox-row">
-                <label><input type="checkbox" id="chk-mute"> 静音所有音效 (Mute)</label>
-                <button id="btn-reset-hp" class="btn" style="padding: 2px 8px; font-size: 11px; margin-left: auto;">❤️ 恢复双人满血</button>
-            </div>
-        </div>
-
         <!-- 物理参数控制区 -->
-        <div class="panel-section-title" style="margin-top: 14px;">
+        <div class="panel-section-title">
             <span>🚀 飞盘抛物线物理控制</span>
         </div>
 
@@ -327,11 +309,11 @@
     </div>
 </div>
 
-<!-- 顶部中央快捷操作栏 -->
+<!-- 右上角：硬件与快捷切换 -->
 <div id="ui-bar">
-    <button id="btn-joycon" class="btn">🎮 连接 Joy-Con</button>
-    <button id="btn-recenter" class="btn">🎯 准星归中</button>
-    <button id="btn-word" class="btn">🔄 切换关卡</button>
+    <button id="btn-joycon" class="btn">🎮 连接 Joy-Con (WebHID)</button>
+    <button id="btn-recenter" class="btn">🎯 准星归中校准</button>
+    <button id="btn-word" class="btn">🔄 切换预置关卡</button>
 </div>
 
 <div class="controls-hint">
@@ -341,186 +323,6 @@
 <canvas id="gameCanvas"></canvas>
 
 <script>
-/**
- * ==========================================
- * 0. 零外部依赖 Web Audio API 实时音效合成器
- * ==========================================
- * 合成：
- * - playLaunch(): 飞盘发射气动声 (白噪声滤波包络 + 低频气泵冲击)
- * - playLaser(isP1): 射击激光声 (高频快速下扫频)
- * - playHitValid(): 命中合法飞盘清脆大三和弦音 (C5-E5-G5-C6 泛音琶音)
- * - playScoreUp(): 词条落槽得分上扬音
- * - playHitWrong(): 误击干扰词金属打铁声 + 低频残血蜂鸣
- */
-class SoundSynthesizer {
-    constructor() {
-        this.ctx = null;
-        this.volume = 0.75;
-        this.muted = false;
-    }
-
-    ensureContext() {
-        if (this.muted || this.volume <= 0) return null;
-        if (!this.ctx) {
-            const AudioCtx = window.AudioContext || window.webkitAudioContext;
-            if (AudioCtx) this.ctx = new AudioCtx();
-        }
-        if (this.ctx && this.ctx.state === 'suspended') {
-            this.ctx.resume().catch(() => {});
-        }
-        return this.ctx;
-    }
-
-    // 1. 底部发射器气动弹射音效
-    playLaunch() {
-        const ctx = this.ensureContext();
-        if (!ctx) return;
-        const now = ctx.currentTime;
-
-        // 气动白噪声喷射
-        const bufferSize = Math.floor(ctx.sampleRate * 0.14);
-        const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
-        const output = noiseBuffer.getChannelData(0);
-        for (let i = 0; i < bufferSize; i++) {
-            output[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.045));
-        }
-
-        const whiteNoise = ctx.createBufferSource();
-        whiteNoise.buffer = noiseBuffer;
-
-        const filter = ctx.createBiquadFilter();
-        filter.type = 'bandpass';
-        filter.frequency.setValueAtTime(650, now);
-        filter.frequency.exponentialRampToValueAtTime(1800, now + 0.12);
-        filter.Q.value = 2.2;
-
-        const gain = ctx.createGain();
-        gain.gain.setValueAtTime(0.22 * this.volume, now);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
-
-        whiteNoise.connect(filter);
-        filter.connect(gain);
-        gain.connect(ctx.destination);
-        whiteNoise.start(now);
-
-        // 机械活塞低频砰声
-        const osc = ctx.createOscillator();
-        const oscGain = ctx.createGain();
-        osc.type = 'triangle';
-        osc.frequency.setValueAtTime(145, now);
-        osc.frequency.exponentialRampToValueAtTime(48, now + 0.09);
-
-        oscGain.gain.setValueAtTime(0.25 * this.volume, now);
-        oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
-
-        osc.connect(oscGain);
-        oscGain.connect(ctx.destination);
-        osc.start(now);
-        osc.stop(now + 0.09);
-    }
-
-    // 2. P1 / P2 扣动扳机激光射击声
-    playLaser(isP1 = true) {
-        const ctx = this.ensureContext();
-        if (!ctx) return;
-        const now = ctx.currentTime;
-
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = 'sawtooth';
-
-        const startFreq = isP1 ? 1150 : 1380;
-        osc.frequency.setValueAtTime(startFreq, now);
-        osc.frequency.exponentialRampToValueAtTime(190, now + 0.085);
-
-        gain.gain.setValueAtTime(0.18 * this.volume, now);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.085);
-
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start(now);
-        osc.stop(now + 0.085);
-    }
-
-    // 3. 命中合法飞盘清脆和弦音
-    playHitValid() {
-        const ctx = this.ensureContext();
-        if (!ctx) return;
-        const now = ctx.currentTime;
-
-        // 明亮大三和弦泛音 (C5, E5, G5, C6)
-        const chordFreqs = [523.25, 659.25, 783.99, 1046.50];
-        chordFreqs.forEach((freq, idx) => {
-            const osc = ctx.createOscillator();
-            const gain = ctx.createGain();
-            osc.type = idx === 3 ? 'triangle' : 'sine';
-
-            const startTime = now + idx * 0.018;
-            osc.frequency.setValueAtTime(freq, startTime);
-
-            gain.gain.setValueAtTime(0.001, startTime);
-            gain.gain.linearRampToValueAtTime((0.18 - idx * 0.03) * this.volume, startTime + 0.012);
-            gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.32);
-
-            osc.connect(gain);
-            gain.connect(ctx.destination);
-            osc.start(startTime);
-            osc.stop(startTime + 0.33);
-        });
-    }
-
-    // 4. 战利品胶囊落入卡槽得分闪光音效
-    playScoreFlash() {
-        const ctx = this.ensureContext();
-        if (!ctx) return;
-        const now = ctx.currentTime;
-
-        const notes = [880, 1174.66, 1318.51];
-        notes.forEach((freq, idx) => {
-            const osc = ctx.createOscillator();
-            const gain = ctx.createGain();
-            osc.type = 'triangle';
-            const t = now + idx * 0.035;
-            osc.frequency.setValueAtTime(freq, t);
-
-            gain.gain.setValueAtTime(0.14 * this.volume, t);
-            gain.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
-
-            osc.connect(gain);
-            gain.connect(ctx.destination);
-            osc.start(t);
-            osc.stop(t + 0.19);
-        });
-    }
-
-    // 5. 误击干扰飞盘金属打铁声 (Clang)
-    playHitWrong() {
-        const ctx = this.ensureContext();
-        if (!ctx) return;
-        const now = ctx.currentTime;
-
-        // 非谐波金属碰撞频率群
-        const metalFreqs = [285, 438, 692, 1125];
-        metalFreqs.forEach((freq) => {
-            const osc = ctx.createOscillator();
-            const gain = ctx.createGain();
-            osc.type = 'square';
-            osc.frequency.setValueAtTime(freq, now);
-            osc.frequency.exponentialRampToValueAtTime(freq * 0.88, now + 0.22);
-
-            gain.gain.setValueAtTime(0.10 * this.volume, now);
-            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
-
-            osc.connect(gain);
-            gain.connect(ctx.destination);
-            osc.start(now);
-            osc.stop(now + 0.23);
-        });
-    }
-}
-
-const sfx = new SoundSynthesizer();
-
 /**
  * ==========================================
  * 1. 标准 1-Euro Filter (自适应低通滤波器)
@@ -647,24 +449,18 @@ let activeWordBank = {
 let canvas, ctx;
 let width, height;
 
-// 实体与特效池
+// 实体与第三阶段特效池
 const frisbees = [];
 const discSectorShards = []; // 4块扇形几何飞盘碎片池
 const shockwaveRings = [];   // 极细半透明冲击波圆环池
-const launcherRings = [];    // 底部发射器炮口喷射气浪环池
 const flyingTokens = [];     // 飞行中的合成词战利品胶囊池
 const particles = [];        // 细微金属/边角碎屑粒子池
 const floatingTexts = [];    // 状态提示漂浮字池
 
-// 底部左右工业发射器状态 (控制后坐力回缩动画 recoil: 1.0 -> 0.0)
-const launchers = [
-    { side: 'left', recoil: 0, angle: -Math.PI * 0.34 },
-    { side: 'right', recoil: 0, angle: -Math.PI * 0.66 }
-];
-
+// 战利品垂直收集框固定容量 (4 个卡槽)
 const RACK_SLOT_COUNT = 4;
 
-// 玩家状态 (新增 8 格分段式生命值 hp/maxHp 与 0.4s 得分闪光特效 scoreFlashTimer)
+// 玩家状态 (新增 collectedWords 战利品卡槽数组与 slotPulse 落槽高亮动画)
 const players = [
     {
         id: 1, name: 'P1',
@@ -676,16 +472,12 @@ const players = [
         accentColor: '#fef08a',  // 亮白黄高光
         rackBg: 'rgba(250, 204, 21, 0.10)',
         score: 0,
-        hp: 8,                   // 8 格分段式生命槽
-        maxHp: 8,
-        damageFlash: 0,          // 扣血受击闪烁计时
-        scoreFlashTimer: 0,      // 得分反馈 (SCORE UP!) 0.4s 计时器
         cooldown: 0,
         maxCooldown: 2.0,
-        firePulse: 0,
+        firePulse: 0,            // 0.1 秒开火微脉冲
         isLocked: false,
         hasJoyCon: false,
-        collectedWords: []
+        collectedWords: []       // 格式: [{ word: '电脑', flash: 1.0 }, ...] (最多展示最新 4 个)
     },
     {
         id: 2, name: 'P2',
@@ -697,10 +489,6 @@ const players = [
         accentColor: '#f5d0fe',  // 亮紫粉高光
         rackBg: 'rgba(217, 70, 239, 0.10)',
         score: 0,
-        hp: 8,                   // 8 格分段式生命槽
-        maxHp: 8,
-        damageFlash: 0,
-        scoreFlashTimer: 0,      // 得分反馈 (SCORE!) 0.4s 计时器
         cooldown: 0,
         maxCooldown: 2.0,
         firePulse: 0,
@@ -715,13 +503,12 @@ const P2_SPEED = 650;
 
 /**
  * 计算对应玩家侧边栏垂直收集框 (Collection Rack) 及指定卡槽的几何坐标
- * (下移至 y=184，为左上/右上新升级的双层工业 HUD 组件留出充裕空间)
  */
 function getPlayerRackGeometry(playerIndex) {
     const rackW = 148;
     const rackH = 224;
     const rackX = playerIndex === 0 ? 20 : width - 20 - rackW;
-    const rackY = 184;
+    const rackY = 134;
     const slotW = rackW - 20;
     const slotH = 42;
     const slotStartX = rackX + 10;
@@ -827,18 +614,16 @@ function parseAndApplyWordBank(baseStr, validStr, invalidStr) {
         invalidList: parsedInvalid
     };
 
+    // 切换关卡时清空场上飞盘与特效，并重置战利品收集槽
     frisbees.length = 0;
     discSectorShards.length = 0;
     shockwaveRings.length = 0;
     flyingTokens.length = 0;
-    players.forEach(p => {
-        p.collectedWords = [];
-        p.hp = p.maxHp;
-    });
+    players.forEach(p => { p.collectedWords = []; });
 
     if (width && height) {
         floatingTexts.push(
-            new FloatingText(width / 2, 145, `✨ 已切换母字【${cleanBase}】`, '#38bdf8')
+            new FloatingText(width / 2, 135, `✨ 已切换母字【${cleanBase}】`, '#38bdf8')
         );
     }
 }
@@ -1009,11 +794,11 @@ class JoyConHIDManager {
         const count = this.controllers.filter(Boolean).length;
         const btn = document.getElementById('btn-joycon');
         if (count === 0) {
-            btn.innerText = '🎮 连接 Joy-Con';
+            btn.innerText = '🎮 连接 Joy-Con (WebHID)';
         } else if (count === 1) {
-            btn.innerText = '🎮 已连接(1/2) 再点连P2';
+            btn.innerText = '🎮 已连接 (1/2) [P1体感] - 点击连P2';
         } else {
-            btn.innerText = '🎮 双手柄已就绪(2/2)';
+            btn.innerText = '🎮 双手柄已就绪 (2/2)';
         }
     }
 
@@ -1052,8 +837,8 @@ class JoyConHIDManager {
 
         for (let i = 0; i < frameCount; i++) {
             const frameOffset = 12 + i * 12;
-            const gyroY = data.getInt16(frameOffset + 8, true);
-            const gyroZ = data.getInt16(frameOffset + 10, true);
+            const gyroY = data.getInt16(frameOffset + 8, true);  // Pitch
+            const gyroZ = data.getInt16(frameOffset + 10, true); // Yaw
             sumPitch += gyroY;
             sumYaw += gyroZ;
         }
@@ -1122,10 +907,11 @@ const joyconManager = new JoyConHIDManager();
 
 /**
  * ==========================================
- * 5. 高清矢量工业街头飞盘绘制函数
+ * 5. 高清矢量工业街头飞盘绘制函数 (支持完整盘、3帧Hit-Stop裂纹态、以及4扇形碎片裁剪)
  * ==========================================
  */
 function renderDiscFaceGraphic(ctx, R, isValid, themeVariant, angle, char) {
+    // 1. 绘制随飞盘自转的双层工业盘体
     ctx.save();
     ctx.rotate(angle);
 
@@ -1366,6 +1152,7 @@ function renderDiscFaceGraphic(ctx, R, isValid, themeVariant, angle, char) {
 
     ctx.restore();
 
+    // 2. 顶部固定立体高光弧
     ctx.save();
     ctx.beginPath();
     ctx.arc(0, 0, R - 4, -Math.PI * 0.82, -Math.PI * 0.18);
@@ -1375,6 +1162,7 @@ function renderDiscFaceGraphic(ctx, R, isValid, themeVariant, angle, char) {
     ctx.stroke();
     ctx.restore();
 
+    // 3. 盘心汉字
     const fontSize = Math.round(R * 1.2);
     ctx.save();
     ctx.font = `900 ${fontSize}px "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Heiti SC", sans-serif`;
@@ -1440,6 +1228,8 @@ function renderDiscFaceGraphic(ctx, R, isValid, themeVariant, angle, char) {
 
 function drawDisc(ctx, disc) {
     const R = disc.radius;
+
+    // 2.5D 空中俯仰透视纵向缩放比 scaleY (0.82 ~ 1.0)
     const speedRatio = Math.min(1.0, Math.abs(disc.normVy) / 310);
     const scaleY = 1.0 - 0.18 * speedRatio;
 
@@ -1447,6 +1237,7 @@ function drawDisc(ctx, disc) {
     ctx.translate(disc.x, disc.y);
     ctx.scale(1.0, scaleY);
 
+    // 0. 绘制 2.5D 立体底盘厚度边与环境投影
     const lipDepth = (1.0 - scaleY) * 28 + 3.5;
     ctx.save();
     ctx.shadowColor = 'rgba(0, 0, 0, 0.58)';
@@ -1463,17 +1254,21 @@ function drawDisc(ctx, disc) {
     ctx.fill();
     ctx.restore();
 
+    // 绘制盘面主体
     renderDiscFaceGraphic(ctx, R, disc.isValid, disc.themeVariant, disc.angle, disc.char);
 
+    // 如果处于 3 帧打击顿帧 (Hit-Stop) 状态，叠加复刻设计图 02 的深黑锯齿裂纹与高光闪白
     if (disc.hitStopFrames > 0) {
         ctx.save();
         ctx.beginPath();
         ctx.arc(0, 0, R, 0, Math.PI * 2);
         ctx.clip();
 
+        // 瞬间受击高亮闪光罩
         ctx.fillStyle = 'rgba(255, 255, 255, 0.28)';
         ctx.fillRect(-R, -R, R * 2, R * 2);
 
+        // 4 条放射状锯齿深黑裂隙 (预示即将分裂为 4 块扇形碎片)
         ctx.strokeStyle = '#090d16';
         ctx.lineWidth = 5.5;
         ctx.lineCap = 'round';
@@ -1492,6 +1287,7 @@ function drawDisc(ctx, disc) {
             ctx.stroke();
         });
 
+        // 裂纹中心亮青/亮白能量内芯线
         ctx.strokeStyle = '#fef08a';
         ctx.lineWidth = 1.6;
         crackAngles.forEach((baseA, idx) => {
@@ -1510,20 +1306,15 @@ function drawDisc(ctx, disc) {
 
 /**
  * ==========================================
- * 6. 飞盘、发射器气浪环、扇形碎片、冲击环与战利品胶囊实体类
+ * 6. 飞盘与第三阶段命中特效类 (扇形碎片、极细冲击波环、战利品飞入胶囊)
  * ==========================================
  */
 class Frisbee {
-    constructor(forceFromLeft = null) {
+    constructor() {
         this.radius = 52;
-        const fromLeft = forceFromLeft !== null ? forceFromLeft : Math.random() < 0.5;
-        this.fromLeft = fromLeft;
-
-        // 从左下角或右下角工业发射器炮口位置射出
-        const muzzleX = fromLeft ? 74 : width - 74;
-        const muzzleY = height - 68;
-        this.x = muzzleX;
-        this.y = muzzleY;
+        const fromLeft = Math.random() < 0.5;
+        this.x = fromLeft ? -this.radius : width + this.radius;
+        this.y = height - 40 - Math.random() * 70;
 
         const apexX = width * (0.26 + Math.random() * 0.48);
         const apexY = height * (0.18 + Math.random() * 0.24);
@@ -1559,16 +1350,19 @@ class Frisbee {
         this.baseSpinSpeed = (fromLeft ? 1 : -1) * (1.2 + Math.random() * 1.0);
         this.markedForDeletion = false;
 
+        // 第三阶段：3 帧打击顿帧 (Hit-Stop) 状态
         this.hitStopFrames = 0;
         this.hitStopTimer = 0;
         this.hitByPlayerIndex = -1;
     }
 
     update(dt) {
+        // 如果处于被击中后的 3 帧打击顿帧期 (约 0.05s)，硬性定格一切物理位移与旋转！
         if (this.hitStopFrames > 0) {
             this.hitStopTimer -= dt;
             this.hitStopFrames--;
             if (this.hitStopFrames <= 0 || this.hitStopTimer <= 0) {
+                // 定格结束瞬间：触发 4 扇形几何碎裂、极细冲击波环与战利品词条飞入
                 shatterDiscAfterHitStop(this);
                 this.markedForDeletion = true;
             }
@@ -1604,74 +1398,9 @@ class Frisbee {
 }
 
 /**
- * 底部发射器炮口喷射的极简白色气浪环 (Muzzle Air Ring)
+ * 【第三阶段新增 1】4 块扇形几何飞盘碎片 (DiscSectorShard)
+ * 复刻设计图 02：飞盘被击中后分裂成 4 块带锯齿断口的扇形几何块，保留原飞盘上的部分汉字与外环向外旋转飞散渐隐
  */
-class LauncherMuzzleRing {
-    constructor(x, y, angle) {
-        this.x = x;
-        this.y = y;
-        this.angle = angle;
-        this.vx = Math.cos(angle) * 140;
-        this.vy = Math.sin(angle) * 140;
-        this.radius = 12;
-        this.maxRadius = 38;
-        this.life = 0;
-        this.duration = 0.28;
-        this.alpha = 0.85;
-    }
-
-    update(dt) {
-        this.life += dt;
-        const p = Math.min(1.0, this.life / this.duration);
-        this.x += this.vx * dt * (1 - p * 0.6);
-        this.y += this.vy * dt * (1 - p * 0.6);
-        this.radius = 12 + (this.maxRadius - 12) * (1 - Math.pow(1 - p, 2));
-        this.alpha = 0.85 * (1 - p);
-    }
-
-    draw(ctx) {
-        if (this.alpha <= 0.01) return;
-        ctx.save();
-        ctx.translate(this.x, this.y);
-        ctx.rotate(this.angle + Math.PI / 2);
-        ctx.scale(1.0, 0.52); // 沿发射方向呈透视椭圆环
-
-        ctx.strokeStyle = `rgba(248, 250, 252, ${this.alpha})`;
-        ctx.lineWidth = 2.2;
-        ctx.beginPath();
-        ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
-        ctx.stroke();
-
-        ctx.strokeStyle = `rgba(203, 213, 225, ${this.alpha * 0.55})`;
-        ctx.lineWidth = 1.0;
-        ctx.beginPath();
-        ctx.arc(0, 0, this.radius * 0.76, 0, Math.PI * 2);
-        ctx.stroke();
-
-        ctx.restore();
-    }
-}
-
-/**
- * 触发飞盘生成并联动底部发射器后坐力动画、气浪环与合成气动声
- */
-function spawnFrisbeeFromLauncher(forceFromLeft = null) {
-    const f = new Frisbee(forceFromLeft);
-    frisbees.push(f);
-
-    const launcherIdx = f.fromLeft ? 0 : 1;
-    const launcher = launchers[launcherIdx];
-    launcher.recoil = 1.0; // 触发炮口后坐力回缩
-
-    const muzzleX = f.fromLeft ? 74 : width - 74;
-    const muzzleY = height - 68;
-    const shootAngle = Math.atan2(f.baseVy, f.baseVx);
-    launcher.angle = shootAngle;
-
-    launcherRings.push(new LauncherMuzzleRing(muzzleX, muzzleY, shootAngle));
-    sfx.playLaunch();
-}
-
 class DiscSectorShard {
     constructor(disc, quadrantIndex) {
         this.x = disc.x;
@@ -1682,28 +1411,33 @@ class DiscSectorShard {
         this.discAngle = disc.angle;
         this.char = disc.char;
 
+        // 每个扇形占据约 90 度象限，带不规则锯齿分界角
         const baseStart = quadrantIndex * (Math.PI / 2) - Math.PI * 0.22;
         const baseEnd = baseStart + Math.PI / 2;
         this.startAngle = baseStart;
         this.endAngle = baseEnd;
         const midAngle = (baseStart + baseEnd) / 2;
 
+        // 锯齿内边节点偏移
         this.jag1Angle = baseStart + 0.14;
         this.jag2Angle = baseEnd - 0.14;
 
+        // 沿象限中心向外爆开初速度
         const ejectSpeed = 135 + Math.random() * 85;
         this.vx = Math.cos(midAngle) * ejectSpeed + (Math.random() - 0.5) * 35;
         this.vy = Math.sin(midAngle) * ejectSpeed - 35;
         this.gravity = 380;
 
+        // 碎片自身旋转角与角速度
         this.shardRotation = 0;
         this.rotSpeed = ((quadrantIndex % 2 === 0 ? 1 : -1) * (2.2 + Math.random() * 2.0));
 
+        // 初始就已经微微裂开 5px 间隙，强化瞬间碎裂感
         this.x += Math.cos(midAngle) * 5;
         this.y += Math.sin(midAngle) * 5;
 
         this.alpha = 1.0;
-        this.decay = 1.55;
+        this.decay = 1.55; // 约 0.65 秒内平滑渐隐
     }
 
     update(dt) {
@@ -1723,6 +1457,7 @@ class DiscSectorShard {
         ctx.translate(this.x, this.y);
         ctx.rotate(this.shardRotation);
 
+        // 构建带锯齿断口的 90° 扇形裁剪路径
         ctx.beginPath();
         ctx.moveTo(0, 0);
         ctx.lineTo(Math.cos(this.jag1Angle) * (R * 0.42), Math.sin(this.jag1Angle) * (R * 0.42));
@@ -1731,11 +1466,13 @@ class DiscSectorShard {
         ctx.lineTo(Math.cos(this.jag2Angle) * (R * 0.48), Math.sin(this.jag2Angle) * (R * 0.48));
         ctx.closePath();
 
+        // 裁剪并渲染原飞盘对应的局部扇面 (含局部汉字与外环)
         ctx.save();
         ctx.clip();
         renderDiscFaceGraphic(ctx, R, this.isValid, this.themeVariant, this.discAngle, this.char);
         ctx.restore();
 
+        // 为扇形断口边缘勾勒一层锐利的深黑断裂线
         ctx.strokeStyle = '#090d16';
         ctx.lineWidth = 2.5;
         ctx.stroke();
@@ -1744,6 +1481,10 @@ class DiscSectorShard {
     }
 }
 
+/**
+ * 【第三阶段新增 2】极细半透明冲击波圆环 (ShockwaveRing)
+ * 复刻设计图 02 右侧：击中点扩散出一圈干净、极细的半透明冲击环与微细径向气流线
+ */
 class ShockwaveRing {
     constructor(x, y) {
         this.x = x;
@@ -1752,12 +1493,13 @@ class ShockwaveRing {
         this.maxRadius = 92;
         this.alpha = 0.88;
         this.life = 0;
-        this.duration = 0.34;
+        this.duration = 0.34; // 0.34 秒快速干脆扩散完毕
     }
 
     update(dt) {
         this.life += dt;
         const progress = Math.min(1.0, this.life / this.duration);
+        // Ease-Out 快速扩张并平滑渐隐
         const easeOut = 1 - Math.pow(1 - progress, 3);
         this.radius = 22 + (this.maxRadius - 22) * easeOut;
         this.alpha = 0.88 * (1 - progress);
@@ -1768,18 +1510,21 @@ class ShockwaveRing {
         ctx.save();
         ctx.translate(this.x, this.y);
 
+        // 1. 外圈极细半透明柔光冲击环
         ctx.strokeStyle = `rgba(241, 245, 249, ${this.alpha * 0.85})`;
         ctx.lineWidth = 1.6;
         ctx.beginPath();
         ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
         ctx.stroke();
 
+        // 2. 内圈紧随的极细副环
         ctx.strokeStyle = `rgba(148, 163, 184, ${this.alpha * 0.45})`;
         ctx.lineWidth = 0.9;
         ctx.beginPath();
         ctx.arc(0, 0, this.radius * 0.86, 0, Math.PI * 2);
         ctx.stroke();
 
+        // 3. 外围 4 组极细切向/径向气流短线 (复刻设计图 02 冲击环周围的细白线)
         const streakAngles = [-2.4, -0.5, 0.8, 2.35];
         ctx.strokeStyle = `rgba(255, 255, 255, ${this.alpha * 0.75})`;
         ctx.lineWidth = 1.1;
@@ -1796,25 +1541,33 @@ class ShockwaveRing {
     }
 }
 
+/**
+ * 【第三阶段新增 3】发光战利品合成词胶囊标签 (FlyingPhraseToken)
+ * 复刻设计图 03：击中合法字后生成如 [电脑 +10] 的高饱和街头胶囊卡牌，沿平滑缓动曲线飞入对应玩家的垂直收集框卡槽并点亮
+ */
 class FlyingPhraseToken {
     constructor(startX, startY, fullWord, playerIndex) {
         this.playerIndex = playerIndex;
         this.player = players[playerIndex];
         this.fullWord = fullWord;
+        this.pointsText = '+10';
 
         this.startX = startX;
         this.startY = startY;
         this.x = startX;
         this.y = startY;
 
+        // 确定该词条即将落入的目标卡槽索引 (0 ~ 3)
         const currentCount = this.player.collectedWords.length;
         this.targetSlotIdx = Math.min(RACK_SLOT_COUNT - 1, currentCount);
 
+        // 贝塞尔弧线控制点偏移（向上拱起形成优美抛物飞入轨迹）
         this.ctrlOffsetY = -95;
 
         this.elapsed = 0;
-        this.holdDuration = 0.16;
-        this.flyDuration = 0.52;
+        this.holdDuration = 0.16;   // 前 0.16s 在击碎原位弹出展示
+        this.flyDuration = 0.56;    // 随后 0.56s 平滑缓动飞入侧边栏卡槽
+        this.totalDuration = this.holdDuration + this.flyDuration;
         this.scale = 0.5;
         this.finished = false;
     }
@@ -1825,11 +1578,13 @@ class FlyingPhraseToken {
         const targetPos = rackGeo.getSlotCenter(this.targetSlotIdx);
 
         if (this.elapsed <= this.holdDuration) {
+            // 阶段 A：原位弹性弹出放大 (Back-Out Pop)
             const t = this.elapsed / this.holdDuration;
             this.scale = 0.6 + 0.52 * Math.sin(t * Math.PI * 0.65);
             this.x = this.startX;
             this.y = this.startY - t * 12;
         } else {
+            // 阶段 B：Ease-In-Out 三次缓动沿二次贝塞尔曲线飞向目标卡槽
             const rawT = Math.min(1.0, (this.elapsed - this.holdDuration) / this.flyDuration);
             const easeT = rawT < 0.5
                 ? 4 * rawT * rawT * rawT
@@ -1849,17 +1604,14 @@ class FlyingPhraseToken {
 
             if (rawT >= 1.0 && !this.finished) {
                 this.finished = true;
-                // 到达卡槽瞬间：加分 (+100) 并触发 HUD 得分反馈特效 (0.4 秒 Score Flash)
-                this.player.score += 100;
-                this.player.scoreFlashTimer = 0.40;
-                sfx.playScoreFlash();
-
+                // 到达卡槽瞬间：点亮对应玩家收集框卡槽并加分 (+10)
+                this.player.score += 10;
                 if (this.player.collectedWords.length >= RACK_SLOT_COUNT) {
                     this.player.collectedWords.shift();
                 }
                 this.player.collectedWords.push({
                     word: this.fullWord,
-                    flash: 1.0
+                    flash: 1.0 // 触发卡槽高亮脉冲
                 });
             }
         }
@@ -1874,6 +1626,9 @@ class FlyingPhraseToken {
     }
 }
 
+/**
+ * 绘制统一风格的战利品合成词胶囊卡牌 (复刻设计图 03 的【电脑+10】【电车+10】样式)
+ */
 function drawPhraseBadgeGraphic(ctx, w, h, wordText, playerIndex, flashIntensity = 0) {
     const isP1 = playerIndex === 0;
     const halfW = w / 2;
@@ -1881,9 +1636,11 @@ function drawPhraseBadgeGraphic(ctx, w, h, wordText, playerIndex, flashIntensity
 
     ctx.save();
 
+    // 外发光与立体底部投影
     ctx.shadowColor = isP1 ? 'rgba(250, 204, 21, 0.55)' : 'rgba(217, 70, 239, 0.55)';
     ctx.shadowBlur = 10 + flashIntensity * 14;
 
+    // 1. 胶囊外层亮白/浅紫贴纸边框
     ctx.fillStyle = isP1 ? '#f8fafc' : '#f5d0fe';
     ctx.strokeStyle = '#090d16';
     ctx.lineWidth = 2.2;
@@ -1892,6 +1649,7 @@ function drawPhraseBadgeGraphic(ctx, w, h, wordText, playerIndex, flashIntensity
     ctx.fill();
     ctx.stroke();
 
+    // 2. 胶囊内芯高饱和渐变底板 (P1 明柠檬黄 / P2 电光荧光紫)
     ctx.shadowBlur = 0;
     const innerPad = 3.2;
     const grad = ctx.createLinearGradient(0, -halfH + innerPad, 0, halfH - innerPad);
@@ -1910,10 +1668,12 @@ function drawPhraseBadgeGraphic(ctx, w, h, wordText, playerIndex, flashIntensity
     ctx.roundRect(-halfW + innerPad, -halfH + innerPad, w - innerPad * 2, h - innerPad * 2, 5.5);
     ctx.fill();
 
+    // 3. 绘制带纯黑粗描边的白字：【电脑 +10】
     ctx.textBaseline = 'middle';
     ctx.lineJoin = 'round';
     ctx.miterLimit = 2;
 
+    // 左侧汉字词组
     ctx.font = '900 20px "PingFang SC", "Microsoft YaHei", "Heiti SC", sans-serif';
     ctx.textAlign = 'left';
     ctx.lineWidth = 5.5;
@@ -1922,6 +1682,7 @@ function drawPhraseBadgeGraphic(ctx, w, h, wordText, playerIndex, flashIntensity
     ctx.fillStyle = '#ffffff';
     ctx.fillText(wordText, -halfW + 12, 1.5);
 
+    // 右侧 +10 分值标识
     ctx.font = '900 17px "Arial Black", "PingFang SC", sans-serif';
     ctx.textAlign = 'right';
     ctx.lineWidth = 5.0;
@@ -1930,6 +1691,7 @@ function drawPhraseBadgeGraphic(ctx, w, h, wordText, playerIndex, flashIntensity
     ctx.fillStyle = isP1 ? '#fef9c3' : '#fae8ff';
     ctx.fillText('+10', halfW - 10, 2);
 
+    // 落槽瞬间的高亮白光闪耀层
     if (flashIntensity > 0.05) {
         ctx.fillStyle = `rgba(255, 255, 255, ${flashIntensity * 0.65})`;
         ctx.beginPath();
@@ -2027,22 +1789,29 @@ function spawnSmallDebris(x, y, palette, count = 10) {
     }
 }
 
+/**
+ * 当合法飞盘完成 3 帧 (0.05s) Hit-Stop 定格后调用：
+ * 1. 生成 4 块扇形几何裂片向外旋转飞散；
+ * 2. 生成 1 圈极细半透明冲击波圆环；
+ * 3. 生成发光战利品词条胶囊飞向对应玩家的侧边栏卡槽。
+ */
 function shatterDiscAfterHitStop(disc) {
+    // 1. 分裂成 4 块扇形几何碎片
     for (let q = 0; q < 4; q++) {
         discSectorShards.push(new DiscSectorShard(disc, q));
     }
 
+    // 2. 补充少量细小棱角碎屑增强层次
     const shardColors = disc.themeVariant === 0
         ? ['#eab308', '#14b8a6', '#fef08a']
         : ['#f97316', '#ea580c', '#2dd4bf'];
     spawnSmallDebris(disc.x, disc.y, shardColors, 10);
 
+    // 3. 在击中点扩散出一圈极细半透明冲击波圆环
     shockwaveRings.push(new ShockwaveRing(disc.x, disc.y));
 
+    // 4. 生成发光的合成词胶囊标签（如 [电脑 +10]）飞向对应玩家的侧边栏收集槽
     if (disc.hitByPlayerIndex >= 0) {
-        const p = players[disc.hitByPlayerIndex];
-        // 击中瞬间立即触发一次得分面板特效，并在战利品胶囊飞入时再次呼应
-        p.scoreFlashTimer = 0.40;
         flyingTokens.push(
             new FlyingPhraseToken(disc.x, disc.y, disc.fullWord, disc.hitByPlayerIndex)
         );
@@ -2053,11 +1822,12 @@ function triggerFire(playerIndex) {
     const p = players[playerIndex];
     if (p.cooldown > 0) return;
 
+    // 触发 0.1 秒极轻微、干脆的向外扩张开火脉冲
     p.firePulse = 1.0;
-    sfx.playLaser(playerIndex === 0);
 
     for (let i = frisbees.length - 1; i >= 0; i--) {
         const f = frisbees[i];
+        // 已经在定格待炸裂中的飞盘不再重复判定
         if (f.hitStopFrames > 0) continue;
 
         const dx = p.x - f.x;
@@ -2066,24 +1836,21 @@ function triggerFire(playerIndex) {
 
         if (dist <= f.radius + 4) {
             if (f.isValid) {
-                sfx.playHitValid();
+                // 【核心机制 1：打击顿帧 Hit-Stop】
+                // 击中合法飞盘瞬间，让该飞盘硬性定格 3 帧 (约 0.05 秒)，随后再炸开！
                 f.hitStopFrames = 3;
                 f.hitStopTimer = 0.05;
                 f.hitByPlayerIndex = playerIndex;
             } else {
-                // 误击干扰飞盘：播放金属打铁声、扣除 1 格生命值并进入冷却惩罚
-                sfx.playHitWrong();
+                // 击中干扰飞盘：进入灰色冷却惩罚，同时分裂为 4 块金属扇形碎片与冲击波环
                 p.cooldown = p.maxCooldown;
-                p.damageFlash = 1.0;
-                p.hp = Math.max(1, p.hp - 1); // 扣血至最低 1~2 格触发残血 LOW 警报展示
-
                 for (let q = 0; q < 4; q++) {
                     discSectorShards.push(new DiscSectorShard(f, q));
                 }
                 shockwaveRings.push(new ShockwaveRing(f.x, f.y));
                 spawnSmallDebris(f.x, f.y, ['#475569', '#eab308', '#1e293b'], 8);
                 floatingTexts.push(
-                    new FloatingText(f.x, f.y - 10, `✗ 误击【${f.char}】 HP-1 & 卡壳冷却!`, '#f87171')
+                    new FloatingText(f.x, f.y - 10, `✗ 误击干扰词【${f.char}】 卡壳冷却!`, '#f87171')
                 );
                 frisbees.splice(i, 1);
             }
@@ -2094,603 +1861,9 @@ function triggerFire(playerIndex) {
 
 /**
  * ==========================================
- * 8. 阶段四核心视觉重构：1:1 复刻《06 分数与血条/生命槽组件》与工业发射器
+ * 8. 渲染函数：HUD、左右垂直战利品收集框 (Collection Racks) 与双人准星
  * ==========================================
  */
-
-// 辅助绘制：切角多边形路径 (Chamfered Bevel Box)
-function traceChamferRect(ctx, x, y, w, h, c) {
-    ctx.beginPath();
-    ctx.moveTo(x + c, y);
-    ctx.lineTo(x + w - c, y);
-    ctx.lineTo(x + w, y + c);
-    ctx.lineTo(x + w, y + h - c);
-    ctx.lineTo(x + w - c, y + h);
-    ctx.lineTo(x + c, y + h);
-    ctx.lineTo(x, y + h - c);
-    ctx.lineTo(x, y + c);
-    ctx.closePath();
-}
-
-// 辅助绘制：工业十字螺丝铆钉 (Fasteners)
-function drawMetalFastener(ctx, cx, cy, r = 4.2, accentColor = null) {
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.fillStyle = '#1e293b';
-    ctx.fill();
-    ctx.lineWidth = 1.2;
-    ctx.strokeStyle = accentColor || '#090d16';
-    ctx.stroke();
-
-    ctx.strokeStyle = '#64748b';
-    ctx.lineWidth = 1.0;
-    ctx.beginPath();
-    ctx.moveTo(cx - r * 0.5, cy - r * 0.5);
-    ctx.lineTo(cx + r * 0.5, cy + r * 0.5);
-    ctx.moveTo(cx + r * 0.5, cy - r * 0.5);
-    ctx.lineTo(cx - r * 0.5, cy + r * 0.5);
-    ctx.stroke();
-    ctx.restore();
-}
-
-// 辅助绘制：黑黄 / 黑紫 工业警示斜纹条 (Hazard Stripes Bar)
-function drawHazardStripeBar(ctx, x, y, w, h, stripeColor) {
-    ctx.save();
-    ctx.beginPath();
-    ctx.roundRect(x, y, w, h, 2);
-    ctx.clip();
-
-    ctx.fillStyle = '#0f172a';
-    ctx.fillRect(x, y, w, h);
-
-    ctx.fillStyle = stripeColor;
-    const step = 11;
-    for (let sx = x - h; sx < x + w + h; sx += step) {
-        ctx.beginPath();
-        ctx.moveTo(sx, y + h);
-        ctx.lineTo(sx + 5.5, y + h);
-        ctx.lineTo(sx + 5.5 + h * 0.75, y);
-        ctx.lineTo(sx + h * 0.75, y);
-        ctx.closePath();
-        ctx.fill();
-    }
-
-    ctx.strokeStyle = '#090d16';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(x, y, w, h);
-    ctx.restore();
-}
-
-/**
- * 1:1 严格还原《06 分数与血条/生命槽组件》P1 (左上角) 与 P2 (右上角，完全镜像)
- */
-function drawPlayerScoreAndHealthHUD(ctx, playerIndex) {
-    const p = players[playerIndex];
-    const isP1 = playerIndex === 0;
-    const themeColor = p.color;        // P1: #facc15 (电光黄), P2: #d946ef (荧光紫)
-    const brightColor = p.accentColor; // P1: #fef08a, P2: #f5d0fe
-    const isLowHp = p.hp <= 2;
-    const pulseBlink = 0.55 + 0.45 * Math.sin(performance.now() * 0.012);
-
-    // 尺寸定义
-    const badgeW = 94;
-    const badgeH = 104;
-    const bridgeW = 10;
-    const stackW = 192;
-    const lifeTrayH = 47;
-    const scoreTrayH = 51;
-    const trayGap = 6;
-    const topY = 16;
-
-    // 左右严格镜像对称坐标计算
-    let badgeX, bridgeX, stackX;
-    if (isP1) {
-        badgeX = 20;
-        bridgeX = badgeX + badgeW - 2;
-        stackX = bridgeX + bridgeW - 2;
-    } else {
-        badgeX = width - 20 - badgeW;
-        bridgeX = badgeX - bridgeW + 2;
-        stackX = bridgeX - stackW + 2;
-    }
-
-    ctx.save();
-
-    // ====================================================
-    // A. 绘制连接桥架 (Symmetrical Metal Bridge)
-    // ====================================================
-    ctx.fillStyle = '#1e293b';
-    ctx.strokeStyle = '#090d16';
-    ctx.lineWidth = 2;
-    ctx.fillRect(bridgeX, topY + 18, bridgeW, badgeH - 36);
-    ctx.strokeRect(bridgeX, topY + 18, bridgeW, badgeH - 36);
-
-    // 桥架上下机械卡扣与微小指示条
-    ctx.fillStyle = '#475569';
-    ctx.fillRect(bridgeX - 1, topY + 24, bridgeW + 2, 6);
-    ctx.fillRect(bridgeX - 1, topY + badgeH - 30, bridgeW + 2, 6);
-
-    // ====================================================
-    // B. 绘制独立方形金属徽章框 (P1 在最左，P2 在最右)
-    // ====================================================
-    ctx.save();
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.55)';
-    ctx.shadowBlur = 12;
-    ctx.shadowOffsetY = 5;
-
-    // 外层重金属切角装甲壳
-    const casingGrad = ctx.createLinearGradient(badgeX, topY, badgeX, topY + badgeH);
-    casingGrad.addColorStop(0, '#475569');
-    casingGrad.addColorStop(0.5, '#334155');
-    casingGrad.addColorStop(1, '#1e293b');
-
-    traceChamferRect(ctx, badgeX, topY, badgeW, badgeH, 9);
-    ctx.fillStyle = casingGrad;
-    ctx.fill();
-    ctx.lineWidth = 2.5;
-    ctx.strokeStyle = '#090d16';
-    ctx.stroke();
-    ctx.restore();
-
-    // 徽章框顶部与底部主题色高光装甲护条 (复刻设计图 P1 顶部/底部柠檬黄卡槽边)
-    ctx.fillStyle = themeColor;
-    ctx.fillRect(badgeX + 18, topY + 1, badgeW - 36, 3);
-    ctx.fillRect(badgeX + 16, topY + badgeH - 4, badgeW - 32, 3);
-
-    // 徽章内部深色凹槽面板
-    const innerPad = 6;
-    traceChamferRect(ctx, badgeX + innerPad, topY + innerPad, badgeW - innerPad * 2, badgeH - innerPad * 2, 6);
-    ctx.fillStyle = isP1 ? '#262f26' : '#281d33';
-    ctx.fill();
-    ctx.lineWidth = 1.5;
-    ctx.strokeStyle = themeColor;
-    ctx.stroke();
-
-    // 四角圆形十字铆钉
-    const screwOff = 12;
-    drawMetalFastener(ctx, badgeX + screwOff, topY + screwOff, 3.8, themeColor);
-    drawMetalFastener(ctx, badgeX + badgeW - screwOff, topY + screwOff, 3.8, themeColor);
-    drawMetalFastener(ctx, badgeX + screwOff, topY + badgeH - screwOff, 3.8, themeColor);
-    drawMetalFastener(ctx, badgeX + badgeW - screwOff, topY + badgeH - screwOff, 3.8, themeColor);
-
-    // 左右两侧垂直细刻度线 (Side Tick Marks)
-    ctx.strokeStyle = themeColor;
-    ctx.lineWidth = 1.2;
-    for (let t = 0; t < 5; t++) {
-        const ty = topY + 34 + t * 5;
-        // 左侧细刻度
-        ctx.beginPath();
-        ctx.moveTo(badgeX + 10, ty);
-        ctx.lineTo(badgeX + 14, ty);
-        ctx.stroke();
-        // 右侧细刻度
-        ctx.beginPath();
-        ctx.moveTo(badgeX + badgeW - 14, ty);
-        ctx.lineTo(badgeX + badgeW - 10, ty);
-        ctx.stroke();
-    }
-
-    // 顶部微缩工业铭牌标签
-    ctx.fillStyle = 'rgba(9, 13, 22, 0.65)';
-    ctx.fillRect(badgeX + badgeW - 44, topY + 11, 28, 7);
-    ctx.fillStyle = themeColor;
-    ctx.font = 'bold 5px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText(isP1 ? 'UNIT-01' : 'UNIT-02', badgeX + badgeW - 30, topY + 16);
-
-    // 居中超粗体 P1 / P2 主标识
-    ctx.save();
-    ctx.shadowColor = themeColor;
-    ctx.shadowBlur = 10;
-    ctx.fillStyle = themeColor;
-    ctx.font = '900 40px "Arial Black", "Impact", "PingFang SC", sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(p.name, badgeX + badgeW / 2, topY + 46);
-    ctx.restore();
-
-    // P1/P2 字样下方的微缩状态矩阵框
-    ctx.strokeStyle = themeColor;
-    ctx.lineWidth = 0.8;
-    ctx.strokeRect(badgeX + 18, topY + 67, 26, 8);
-    ctx.fillStyle = themeColor;
-    ctx.font = 'bold 5px monospace';
-    ctx.textAlign = 'left';
-    ctx.fillText('SYS:OK', badgeX + 20, topY + 73);
-    ctx.fillText(p.hasJoyCon ? 'GYRO:ON' : 'DEV:LOC', badgeX + 48, topY + 73);
-
-    // 底部黑黄 / 黑紫警示斜纹条
-    drawHazardStripeBar(ctx, badgeX + 18, topY + badgeH - 22, badgeW - 36, 9, themeColor);
-
-    // ====================================================
-    // C. 绘制上层托盘：8 格分段式生命槽 (Segmented Life Gauge)
-    // ====================================================
-    const lifeY = topY;
-    ctx.save();
-    ctx.shadowColor = isLowHp ? 'rgba(239, 68, 68, 0.45)' : 'rgba(0, 0, 0, 0.5)';
-    ctx.shadowBlur = 10;
-    ctx.shadowOffsetY = 4;
-
-    // 外层深灰金属框架外壳
-    traceChamferRect(ctx, stackX, lifeY, stackW, lifeTrayH, 8);
-    ctx.fillStyle = isLowHp ? '#3b1d24' : '#334155';
-    ctx.fill();
-    ctx.lineWidth = 2.2;
-    ctx.strokeStyle = isLowHp ? '#ef4444' : '#090d16';
-    ctx.stroke();
-    ctx.restore();
-
-    // 托盘四角铆钉
-    drawMetalFastener(ctx, stackX + 7, lifeY + 7, 2.6);
-    drawMetalFastener(ctx, stackX + stackW - 7, lifeY + 7, 2.6);
-    drawMetalFastener(ctx, stackX + 7, lifeY + lifeTrayH - 7, 2.6);
-    drawMetalFastener(ctx, stackX + stackW - 7, lifeY + lifeTrayH - 7, 2.6);
-
-    // 内部深黑凹槽底托
-    const wellPad = 6;
-    ctx.beginPath();
-    ctx.roundRect(stackX + wellPad, lifeY + wellPad, stackW - wellPad * 2, lifeTrayH - wellPad * 2, 5);
-    ctx.fillStyle = '#090d16';
-    ctx.fill();
-    ctx.lineWidth = 1.2;
-    ctx.strokeStyle = isLowHp ? 'rgba(239, 68, 68, 0.7)' : 'rgba(148, 163, 184, 0.35)';
-    ctx.stroke();
-
-    // 绘制内置 8 格圆角竖条能量块
-    const totalSegments = 8;
-    const segW = 16;
-    const segH = 25;
-    const segGap = 4.5;
-    // 当残血 (isLowHp) 时，如果需要在右侧留出 LOW (警告) 空间，前 6 格显示槽位，右侧显示醒目红色 LOW (警告)
-    const segStartX = stackX + 13;
-    const segY = lifeY + (lifeTrayH - segH) / 2;
-
-    for (let i = 0; i < totalSegments; i++) {
-        // 如果处于残血状态 (HP <= 2)，第 6, 7 格位置让位给右侧红色的 "LOW (警告)" 字样（严格还原设计图左下角残血图例）
-        if (isLowHp && i >= 6) continue;
-
-        const sx = segStartX + i * (segW + segGap);
-        const isFilled = i < p.hp;
-
-        if (isFilled) {
-            ctx.save();
-            if (isLowHp) {
-                // 残血时剩余 1~2 格呈橙红色高亮闪烁 + 斜纹
-                ctx.shadowColor = '#ef4444';
-                ctx.shadowBlur = 8 * pulseBlink;
-                const lowGrad = ctx.createLinearGradient(sx, segY, sx, segY + segH);
-                lowGrad.addColorStop(0, '#fde047');
-                lowGrad.addColorStop(0.5, '#f97316');
-                lowGrad.addColorStop(1, '#dc2626');
-                ctx.fillStyle = lowGrad;
-                ctx.beginPath();
-                ctx.roundRect(sx, segY, segW, segH, 3);
-                ctx.fill();
-            } else {
-                // 正常状态：高饱和电光黄 (P1) 或 荧光紫 (P2) 发光能量块
-                ctx.shadowColor = themeColor;
-                ctx.shadowBlur = 8;
-                const segGrad = ctx.createLinearGradient(sx, segY, sx, segY + segH);
-                segGrad.addColorStop(0, brightColor);
-                segGrad.addColorStop(0.5, themeColor);
-                segGrad.addColorStop(1, isP1 ? '#ca8a04' : '#a21caf');
-                ctx.fillStyle = segGrad;
-                ctx.beginPath();
-                ctx.roundRect(sx, segY, segW, segH, 3);
-                ctx.fill();
-
-                // 能量块中心亮芯竖条
-                ctx.shadowBlur = 0;
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
-                ctx.fillRect(sx + 4, segY + 3, segW - 8, segH - 6);
-            }
-            ctx.restore();
-        } else {
-            // 扣血后的暗灰镂空槽
-            ctx.save();
-            ctx.fillStyle = '#161e2e';
-            ctx.strokeStyle = '#334155';
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.roundRect(sx, segY, segW, segH, 3);
-            ctx.fill();
-            ctx.stroke();
-
-            // 暗槽内部微弱斜线底纹
-            ctx.strokeStyle = 'rgba(71, 85, 105, 0.35)';
-            ctx.beginPath();
-            ctx.moveTo(sx + 3, segY + segH - 3);
-            ctx.lineTo(sx + segW - 3, segY + 3);
-            ctx.stroke();
-            ctx.restore();
-        }
-    }
-
-    // 残血状态 (HP <= 2)：在生命槽右侧空白处亮起红色的 LOW (警告) 字样
-    if (isLowHp) {
-        ctx.save();
-        ctx.globalAlpha = 0.65 + 0.35 * pulseBlink;
-        ctx.shadowColor = '#ef4444';
-        ctx.shadowBlur = 8;
-        ctx.fillStyle = '#ef4444';
-        ctx.textAlign = 'center';
-        ctx.font = '900 13px "Arial Black", sans-serif';
-        ctx.fillText('LOW', stackX + stackW - 26, lifeY + 21);
-        ctx.font = 'bold 9px "PingFang SC", sans-serif';
-        ctx.fillText('(警告)', stackX + stackW - 26, lifeY + 33);
-        ctx.restore();
-    }
-
-    // ====================================================
-    // D. 绘制下层托盘：数显分数板 (Score Display) + 得分反馈 (Score Flash)
-    // ====================================================
-    const scoreY = lifeY + lifeTrayH + trayGap;
-    const isScoreFlashing = p.scoreFlashTimer > 0;
-    const flashRatio = Math.max(0, Math.min(1, p.scoreFlashTimer / 0.40));
-
-    ctx.save();
-    ctx.shadowColor = isScoreFlashing ? themeColor : 'rgba(0, 0, 0, 0.55)';
-    ctx.shadowBlur = isScoreFlashing ? 18 : 10;
-    ctx.shadowOffsetY = 4;
-
-    // 分数板外层金属外壳
-    traceChamferRect(ctx, stackX, scoreY, stackW, scoreTrayH, 8);
-    ctx.fillStyle = '#334155';
-    ctx.fill();
-    ctx.lineWidth = 2.2;
-    ctx.strokeStyle = isScoreFlashing ? brightColor : '#090d16';
-    ctx.stroke();
-    ctx.restore();
-
-    // 分数板底部主题色装甲托边 (复刻设计图中分数框下沿的电光黄/荧光紫折边)
-    ctx.strokeStyle = themeColor;
-    ctx.lineWidth = 2.5;
-    ctx.beginPath();
-    ctx.moveTo(stackX + 10, scoreY + scoreTrayH + 1);
-    ctx.lineTo(stackX + stackW - 10, scoreY + scoreTrayH + 1);
-    ctx.stroke();
-
-    // 深黑内凹数显屏幕
-    const screenX = stackX + 7;
-    const screenY = scoreY + 6;
-    const screenW = stackW - 14;
-    const screenH = scoreTrayH - 12;
-
-    ctx.beginPath();
-    ctx.roundRect(screenX, screenY, screenW, screenH, 5);
-    ctx.fillStyle = '#070a12';
-    ctx.fill();
-    ctx.lineWidth = 1.5;
-    ctx.strokeStyle = isScoreFlashing ? brightColor : themeColor;
-    ctx.stroke();
-
-    // 右侧微小指示灯点
-    ctx.save();
-    ctx.fillStyle = themeColor;
-    ctx.shadowColor = themeColor;
-    ctx.shadowBlur = 6;
-    ctx.beginPath();
-    ctx.arc(screenX + screenW - 11, screenY + screenH / 2, 2.4, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-
-    // 数显屏幕背景暗色 8888 底纹 (营造真实七段数码管质感)
-    ctx.font = '900 30px "Courier New", "Consolas", monospace';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = isP1 ? 'rgba(250, 204, 21, 0.07)' : 'rgba(217, 70, 239, 0.07)';
-    ctx.fillText('8888', screenX + screenW / 2 - 4, screenY + screenH / 2 + 1);
-
-    // 渲染当前分数 或 P1 得分瞬间切换显示 "SCORE UP!"
-    ctx.save();
-    ctx.shadowColor = themeColor;
-    ctx.shadowBlur = isScoreFlashing ? 16 : 8;
-    ctx.fillStyle = isScoreFlashing ? brightColor : themeColor;
-
-    if (isP1 && isScoreFlashing && flashRatio > 0.35) {
-        // P1 得分特效：屏幕内高亮闪现粗体 "SCORE UP!"
-        ctx.font = '900 22px "Arial Black", "Impact", sans-serif';
-        ctx.fillText('SCORE UP!', screenX + screenW / 2 - 4, screenY + screenH / 2 + 1);
-    } else {
-        ctx.font = '900 30px "Courier New", "Consolas", monospace';
-        ctx.fillText(`${p.score}`, screenX + screenW / 2 - 4, screenY + screenH / 2 + 1);
-    }
-    ctx.restore();
-
-    // ====================================================
-    // E. 得分反馈外围特效 (Score Flash - P1 双层电光黄脉冲框 + 小标牌 / P2 紫色星光 + SCORE! 贴纸)
-    // ====================================================
-    if (isScoreFlashing) {
-        ctx.save();
-        ctx.globalAlpha = flashRatio;
-
-        if (isP1) {
-            // 1. P1 分数板外围双层电光黄发光脉冲环
-            const expand = (1 - flashRatio) * 8;
-            ctx.strokeStyle = '#fef08a';
-            ctx.lineWidth = 2.2;
-            ctx.shadowColor = '#facc15';
-            ctx.shadowBlur = 14;
-            ctx.beginPath();
-            ctx.roundRect(stackX - 4 - expand, scoreY - 4 - expand, stackW + 8 + expand * 2, scoreTrayH + 8 + expand * 2, 11);
-            ctx.stroke();
-
-            ctx.strokeStyle = '#facc15';
-            ctx.lineWidth = 1.2;
-            ctx.beginPath();
-            ctx.roundRect(stackX - 9 - expand * 1.4, scoreY - 8 - expand * 1.4, stackW + 18 + expand * 2.8, scoreTrayH + 16 + expand * 2.8, 14);
-            ctx.stroke();
-
-            // 2. 右下角弹出带倾斜角度的 "SCORE UP!" 发光标牌
-            ctx.save();
-            ctx.translate(stackX + stackW - 18, scoreY + scoreTrayH + 8);
-            ctx.rotate(-0.10);
-            ctx.fillStyle = '#090d16';
-            ctx.strokeStyle = '#facc15';
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.roundRect(-44, -10, 88, 20, 4);
-            ctx.fill();
-            ctx.stroke();
-
-            ctx.fillStyle = '#fef08a';
-            ctx.font = '900 italic 11px "Arial Black", sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText('SCORE UP!', 0, 0);
-            ctx.restore();
-
-        } else {
-            // 1. P2 分数板周围散发紫色四角星芒粒子 (Sparkles)
-            const starCoords = [
-                [stackX - 10, scoreY + 8, 7],
-                [stackX + stackW + 10, scoreY + 12, 8],
-                [stackX + 16, scoreY + scoreTrayH + 9, 6],
-                [stackX + stackW - 22, scoreY - 7, 7]
-            ];
-            ctx.fillStyle = '#f5d0fe';
-            ctx.shadowColor = '#d946ef';
-            ctx.shadowBlur = 10;
-            starCoords.forEach(([sx, sy, sr]) => {
-                ctx.beginPath();
-                ctx.moveTo(sx, sy - sr);
-                ctx.quadraticCurveTo(sx, sy, sx + sr, sy);
-                ctx.quadraticCurveTo(sx, sy, sx, sy + sr);
-                ctx.quadraticCurveTo(sx, sy, sx - sr, sy);
-                ctx.quadraticCurveTo(sx, sy, sx, sy - sr);
-                ctx.closePath();
-                ctx.fill();
-            });
-
-            // 2. 左上角与右下角弹出倾斜的 "SCORE!" 发光紫粉标签 (严格对应设计图右下角 P2 得分反馈)
-            const badgePositions = [
-                [stackX + 12, scoreY + 2, -0.18],
-                [stackX + stackW - 16, scoreY + scoreTrayH - 2, -0.14]
-            ];
-            badgePositions.forEach(([bx, by, rot]) => {
-                ctx.save();
-                ctx.translate(bx, by);
-                ctx.rotate(rot);
-                ctx.fillStyle = '#d946ef';
-                ctx.strokeStyle = '#090d16';
-                ctx.lineWidth = 2;
-                ctx.beginPath();
-                ctx.roundRect(-30, -9, 60, 18, 4);
-                ctx.fill();
-                ctx.stroke();
-
-                ctx.fillStyle = '#ffffff';
-                ctx.font = '900 italic 11px "Arial Black", sans-serif';
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-                ctx.fillText('SCORE!', 0, 0);
-                ctx.restore();
-            });
-        }
-
-        ctx.restore();
-    }
-
-    ctx.restore();
-}
-
-/**
- * 绘制统一工业机甲风格的底部左右飞盘发射器 (含炮管后坐力回缩动画)
- */
-function drawIndustrialLaunchers(ctx) {
-    launchers.forEach((launcher, idx) => {
-        const isLeft = idx === 0;
-        const themeColor = isLeft ? '#facc15' : '#d946ef';
-        const baseX = isLeft ? 0 : width;
-        const baseY = height;
-
-        // 后坐力位移量 (发射瞬间向底座内部回缩 14px)
-        const recoilShift = launcher.recoil * 14;
-        const aimAngle = isLeft ? -Math.PI * 0.32 : -Math.PI * 0.68;
-
-        ctx.save();
-
-        // 1. 绘制可伸缩工业炮管 (Barrel)
-        ctx.save();
-        const pivotX = isLeft ? 44 : width - 44;
-        const pivotY = height - 42;
-        ctx.translate(pivotX, pivotY);
-        ctx.rotate(aimAngle);
-        ctx.translate(-recoilShift, 0);
-
-        // 炮管金属主体
-        const barrelGrad = ctx.createLinearGradient(0, -22, 0, 22);
-        barrelGrad.addColorStop(0, '#64748b');
-        barrelGrad.addColorStop(0.5, '#334155');
-        barrelGrad.addColorStop(1, '#0f172a');
-
-        ctx.fillStyle = barrelGrad;
-        ctx.strokeStyle = '#090d16';
-        ctx.lineWidth = 2.5;
-        ctx.beginPath();
-        ctx.roundRect(0, -20, 52, 40, 5);
-        ctx.fill();
-        ctx.stroke();
-
-        // 炮口加厚装甲箍环与主题色能量导轨
-        ctx.fillStyle = '#1e293b';
-        ctx.fillRect(40, -23, 14, 46);
-        ctx.strokeRect(40, -23, 14, 46);
-
-        ctx.fillStyle = themeColor;
-        ctx.fillRect(10, -4, 26, 8);
-        ctx.restore();
-
-        // 2. 绘制左下角 / 右下角重金属切角装甲底座 (Casing)
-        ctx.save();
-        ctx.shadowColor = 'rgba(0, 0, 0, 0.65)';
-        ctx.shadowBlur = 14;
-
-        ctx.beginPath();
-        if (isLeft) {
-            ctx.moveTo(0, height - 88);
-            ctx.lineTo(58, height - 88);
-            ctx.lineTo(88, height - 58);
-            ctx.lineTo(88, height);
-            ctx.lineTo(0, height);
-        } else {
-            ctx.moveTo(width, height - 88);
-            ctx.lineTo(width - 58, height - 88);
-            ctx.lineTo(width - 88, height - 58);
-            ctx.lineTo(width - 88, height);
-            ctx.lineTo(width, height);
-        }
-        ctx.closePath();
-
-        const baseGrad = ctx.createLinearGradient(0, height - 88, 0, height);
-        baseGrad.addColorStop(0, '#475569');
-        baseGrad.addColorStop(0.5, '#334155');
-        baseGrad.addColorStop(1, '#1e293b');
-        ctx.fillStyle = baseGrad;
-        ctx.fill();
-        ctx.lineWidth = 3;
-        ctx.strokeStyle = '#090d16';
-        ctx.stroke();
-        ctx.restore();
-
-        // 3. 底座黑黄 / 黑紫警示斜纹装饰板与铆钉
-        if (isLeft) {
-            drawHazardStripeBar(ctx, 10, height - 24, 64, 12, themeColor);
-            drawMetalFastener(ctx, 14, height - 74, 4.0, themeColor);
-            drawMetalFastener(ctx, 50, height - 74, 4.0, themeColor);
-            drawMetalFastener(ctx, 74, height - 48, 4.0, themeColor);
-        } else {
-            drawHazardStripeBar(ctx, width - 74, height - 24, 64, 12, themeColor);
-            drawMetalFastener(ctx, width - 14, height - 74, 4.0, themeColor);
-            drawMetalFastener(ctx, width - 50, height - 74, 4.0, themeColor);
-            drawMetalFastener(ctx, width - 74, height - 48, 4.0, themeColor);
-        }
-
-        ctx.restore();
-    });
-}
-
 function drawCollectionRack(ctx, playerIndex) {
     const p = players[playerIndex];
     const geo = getPlayerRackGeometry(playerIndex);
@@ -2698,6 +1871,7 @@ function drawCollectionRack(ctx, playerIndex) {
 
     ctx.save();
 
+    // 1. 垂直收集框外发光与半透明霓虹工业底板 (复刻设计图 03 P1/P2 垂直收集框)
     ctx.shadowColor = p.color;
     ctx.shadowBlur = 14;
     ctx.fillStyle = 'rgba(15, 23, 42, 0.82)';
@@ -2708,12 +1882,14 @@ function drawCollectionRack(ctx, playerIndex) {
     ctx.fill();
     ctx.stroke();
 
+    // 内部彩色微光涂层
     ctx.shadowBlur = 0;
     ctx.fillStyle = p.rackBg;
     ctx.beginPath();
     ctx.roundRect(rackX + 3, rackY + 3, rackW - 6, rackH - 6, 8);
     ctx.fill();
 
+    // 四角工业金属铆钉装饰
     const rivetOffsets = [
         [rackX + 8, rackY + 8],
         [rackX + rackW - 8, rackY + 8],
@@ -2727,16 +1903,19 @@ function drawCollectionRack(ctx, playerIndex) {
         ctx.fill();
     });
 
+    // 顶部收集框小标题
     ctx.fillStyle = p.accentColor;
     ctx.font = 'bold 11px "PingFang SC", monospace';
     ctx.textAlign = 'center';
     ctx.fillText(`${p.name} 词组收集槽 (${p.collectedWords.length}/${RACK_SLOT_COUNT})`, rackX + rackW / 2, rackY + 19);
 
+    // 2. 绘制 4 个垂直卡槽 (空槽显示虚线框与 01 EMPTY，已收集槽显示点亮的词条卡牌)
     for (let i = 0; i < RACK_SLOT_COUNT; i++) {
         const slotRect = geo.getSlotRect(i);
         const collectedItem = p.collectedWords[i];
 
         if (!collectedItem) {
+            // 绘制虚线空卡槽
             ctx.save();
             ctx.strokeStyle = playerIndex === 0 ? 'rgba(250, 204, 21, 0.35)' : 'rgba(217, 70, 239, 0.35)';
             ctx.fillStyle = 'rgba(9, 13, 22, 0.35)';
@@ -2755,8 +1934,677 @@ function drawCollectionRack(ctx, playerIndex) {
             ctx.fillText(`0${i + 1} EMPTY`, slotRect.x + slotRect.w / 2, slotRect.y + slotRect.h / 2);
             ctx.restore();
         } else {
+            // 绘制已点亮的合成词胶囊卡牌
             ctx.save();
             ctx.translate(slotRect.x + slotRect.w / 2, slotRect.y + slotRect.h / 2);
             const popScale = 1.0 + collectedItem.flash * 0.08;
             ctx.scale(popScale, popScale);
             drawPhraseBadgeGraphic(ctx, slotRect.w, slotRect.h - 2, collectedItem.word, playerIndex, collectedItem.flash);
+            ctx.restore();
+        }
+    }
+
+    ctx.restore();
+}
+
+function drawHUD(ctx) {
+    const centerX = width / 2;
+    const topY = 58;
+
+    ctx.save();
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '13px "PingFang SC", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('请射击能与下方母字组成合法词语的飞盘', centerX, 24);
+
+    ctx.fillStyle = '#1e293b';
+    ctx.strokeStyle = '#eab308';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.roundRect(centerX - 65, topY - 24, 130, 62, 12);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#fef08a';
+    ctx.font = 'bold 36px "PingFang SC", "Microsoft YaHei", sans-serif';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`【${activeWordBank.base}】`, centerX, topY + 8);
+    ctx.restore();
+
+    // 绘制 P1 / P2 顶部计分板与下方垂直战利品收集框
+    players.forEach((p, idx) => {
+        ctx.save();
+        const isLeft = idx === 0;
+        const boxW = 148;
+        const boxX = isLeft ? 20 : width - 20 - boxW;
+        const boxY = 66;
+
+        ctx.fillStyle = 'rgba(30, 41, 59, 0.82)';
+        ctx.strokeStyle = p.cooldown > 0 ? '#64748b' : p.color;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.roundRect(boxX, boxY, boxW, 56, 8);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = p.cooldown > 0 ? '#94a3b8' : p.color;
+        ctx.font = 'bold 17px sans-serif';
+        ctx.textAlign = 'left';
+        const modeTag = p.hasJoyCon ? '🎮' : '';
+        ctx.fillText(`${p.name} ${modeTag}`, boxX + 12, boxY + 23);
+
+        ctx.fillStyle = '#f8fafc';
+        ctx.font = 'bold 22px monospace';
+        ctx.textAlign = 'right';
+        ctx.fillText(`${p.score}`, boxX + boxW - 12, boxY + 25);
+
+        ctx.fillStyle = p.cooldown > 0 ? '#94a3b8' : '#64748b';
+        ctx.font = '11px sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(
+            p.cooldown > 0 ? `卡壳冷却 ${p.cooldown.toFixed(1)}s` : (p.hasJoyCon ? `体感 ${CONFIG.reticleSensitivity.toFixed(1)}x 就绪` : '状态: 就绪'),
+            boxX + 12,
+            boxY + 44
+        );
+        ctx.restore();
+
+        // 绘制侧边栏垂直收集框
+        drawCollectionRack(ctx, idx);
+    });
+}
+
+function drawCrosshair(ctx, p) {
+    ctx.save();
+    ctx.translate(p.x, p.y);
+
+    const isCooling = p.cooldown > 0;
+    const pulseOffset = isCooling ? 0 : p.firePulse * 4.5;
+
+    const mainColor = isCooling ? '#64748b' : p.color;
+    const subColor = isCooling ? '#475569' : p.accentColor;
+
+    ctx.globalAlpha = isCooling ? 0.52 : 1.0;
+    if (!isCooling) {
+        ctx.shadowColor = p.color;
+        ctx.shadowBlur = p.firePulse > 0 ? 14 : 6;
+    }
+
+    if (p.id === 1) {
+        const outerR = 30 + pulseOffset;
+        const innerR = 25 + pulseOffset * 0.7;
+
+        ctx.strokeStyle = 'rgba(9, 13, 22, 0.75)';
+        ctx.lineWidth = 3.2;
+        ctx.beginPath();
+        ctx.arc(0, 0, outerR, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.strokeStyle = mainColor;
+        ctx.lineWidth = 2.0;
+        const gapAngle = 0.16;
+        for (let i = 0; i < 4; i++) {
+            const startA = i * (Math.PI / 2) + gapAngle;
+            const endA = (i + 1) * (Math.PI / 2) - gapAngle;
+            ctx.beginPath();
+            ctx.arc(0, 0, outerR, startA, endA);
+            ctx.stroke();
+        }
+
+        ctx.strokeStyle = subColor;
+        ctx.lineWidth = 0.9;
+        for (let i = 0; i < 4; i++) {
+            const startA = i * (Math.PI / 2) + gapAngle * 1.4;
+            const endA = (i + 1) * (Math.PI / 2) - gapAngle * 1.4;
+            ctx.beginPath();
+            ctx.arc(0, 0, innerR, startA, endA);
+            ctx.stroke();
+        }
+
+        ctx.fillStyle = mainColor;
+        ctx.strokeStyle = '#090d16';
+        ctx.lineWidth = 1;
+        for (let i = 0; i < 4; i++) {
+            ctx.save();
+            ctx.rotate(i * (Math.PI / 2));
+            ctx.beginPath();
+            ctx.moveTo(-2.8, -(outerR + 3));
+            ctx.lineTo(2.8, -(outerR + 3));
+            ctx.lineTo(1.5, -(innerR - 4));
+            ctx.lineTo(-1.5, -(innerR - 4));
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        ctx.strokeStyle = subColor;
+        ctx.lineWidth = 0.85;
+        const axisStart = 5;
+        const axisEnd = innerR - 6;
+
+        for (let i = 0; i < 4; i++) {
+            ctx.save();
+            ctx.rotate(i * (Math.PI / 2));
+            ctx.beginPath();
+            ctx.moveTo(0, -axisStart);
+            ctx.lineTo(0, -axisEnd);
+            ctx.stroke();
+
+            for (let r = 8; r <= axisEnd - 2; r += 3.5) {
+                const tickHalfW = (r === 15) ? 2.6 : 1.3;
+                ctx.beginPath();
+                ctx.moveTo(-tickHalfW, -r);
+                ctx.lineTo(tickHalfW, -r);
+                ctx.stroke();
+            }
+            ctx.restore();
+        }
+
+        ctx.strokeStyle = mainColor;
+        ctx.lineWidth = 1.1;
+        ctx.beginPath();
+        ctx.moveTo(-2.2, 0); ctx.lineTo(2.2, 0);
+        ctx.moveTo(0, -2.2); ctx.lineTo(0, 2.2);
+        ctx.stroke();
+
+        if (p.firePulse > 0 && !isCooling) {
+            ctx.save();
+            ctx.globalAlpha = p.firePulse;
+            ctx.strokeStyle = '#fef08a';
+            ctx.lineWidth = 1.4;
+
+            const pulseRingR = outerR + 5 + (1 - p.firePulse) * 6;
+            ctx.beginPath();
+            ctx.arc(0, 0, pulseRingR, -Math.PI * 0.38, Math.PI * 0.22);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(0, 0, pulseRingR, Math.PI * 0.62, Math.PI * 1.22);
+            ctx.stroke();
+
+            const sparkAngles = [-0.65, -0.45, 2.35, 2.6];
+            sparkAngles.forEach(a => {
+                ctx.beginPath();
+                ctx.moveTo(Math.cos(a) * (innerR - 4), Math.sin(a) * (innerR - 4));
+                ctx.lineTo(Math.cos(a) * (pulseRingR + 6), Math.sin(a) * (pulseRingR + 6));
+                ctx.stroke();
+            });
+            ctx.restore();
+        }
+
+    } else {
+        const outerD = 33 + pulseOffset;
+        const innerD = 26 + pulseOffset * 0.7;
+
+        ctx.strokeStyle = 'rgba(9, 13, 22, 0.8)';
+        ctx.lineWidth = 3.5;
+        ctx.beginPath();
+        ctx.moveTo(0, -outerD);
+        ctx.lineTo(outerD, 0);
+        ctx.lineTo(0, outerD);
+        ctx.lineTo(-outerD, 0);
+        ctx.closePath();
+        ctx.stroke();
+
+        ctx.strokeStyle = mainColor;
+        ctx.lineWidth = 2.0;
+        ctx.beginPath();
+        ctx.moveTo(0, -outerD);
+        ctx.lineTo(outerD, 0);
+        ctx.lineTo(0, outerD);
+        ctx.lineTo(-outerD, 0);
+        ctx.closePath();
+        ctx.stroke();
+
+        ctx.strokeStyle = subColor;
+        ctx.lineWidth = 0.9;
+        ctx.beginPath();
+        ctx.moveTo(0, -innerD);
+        ctx.lineTo(innerD, 0);
+        ctx.lineTo(0, innerD);
+        ctx.lineTo(-innerD, 0);
+        ctx.closePath();
+        ctx.stroke();
+
+        ctx.fillStyle = mainColor;
+        ctx.strokeStyle = '#090d16';
+        ctx.lineWidth = 0.9;
+        for (let i = 0; i < 4; i++) {
+            ctx.save();
+            ctx.rotate(i * (Math.PI / 2));
+            ctx.beginPath();
+            ctx.moveTo(0, -(outerD + 2));
+            ctx.lineTo(3.2, -(innerD - 1));
+            ctx.lineTo(0, -(innerD - 6));
+            ctx.lineTo(-3.2, -(innerD - 1));
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        ctx.strokeStyle = subColor;
+        ctx.lineWidth = 0.85;
+        const axisStart = 4.5;
+        const axisEnd = innerD - 7;
+        for (let i = 0; i < 4; i++) {
+            ctx.save();
+            ctx.rotate(i * (Math.PI / 2));
+            ctx.beginPath();
+            ctx.moveTo(0, -axisStart);
+            ctx.lineTo(0, -axisEnd);
+            ctx.stroke();
+
+            for (let r = 8; r <= axisEnd - 2; r += 4) {
+                ctx.beginPath();
+                ctx.moveTo(-1.4, -r);
+                ctx.lineTo(1.4, -r);
+                ctx.stroke();
+            }
+            ctx.restore();
+        }
+
+        ctx.fillStyle = mainColor;
+        ctx.beginPath();
+        ctx.arc(0, 0, 1.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        if (p.firePulse > 0 && !isCooling) {
+            ctx.save();
+            ctx.globalAlpha = p.firePulse;
+            ctx.strokeStyle = '#f5d0fe';
+            ctx.lineWidth = 1.5;
+
+            const flareLen = outerD + 8 + (1 - p.firePulse) * 6;
+            ctx.beginPath();
+            ctx.moveTo(-flareLen * 0.75, -flareLen * 0.75);
+            ctx.lineTo(flareLen * 0.75, flareLen * 0.75);
+            ctx.moveTo(flareLen * 0.75, -flareLen * 0.75);
+            ctx.lineTo(-flareLen * 0.75, flareLen * 0.75);
+            ctx.stroke();
+            ctx.restore();
+        }
+    }
+
+    if (!isCooling && p.isLocked) {
+        ctx.save();
+        const bracketDist = 34;
+        const bracketLen = 8;
+        ctx.strokeStyle = p.color;
+        ctx.lineWidth = 2.0;
+
+        const corners = [
+            [-1, -1], [1, -1], [1, 1], [-1, 1]
+        ];
+        corners.forEach(([sx, sy]) => {
+            const cx = sx * bracketDist;
+            const cy = sy * bracketDist;
+            ctx.beginPath();
+            ctx.moveTo(cx, cy - sy * bracketLen);
+            ctx.lineTo(cx, cy);
+            ctx.lineTo(cx - sx * bracketLen, cy);
+            ctx.stroke();
+        });
+
+        ctx.save();
+        ctx.translate(26, 26);
+        ctx.rotate(-0.12);
+        ctx.font = '900 italic 12px "Arial Black", sans-serif';
+        ctx.lineJoin = 'round';
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = '#090d16';
+        ctx.strokeText('LOCK!', 0, 0);
+        ctx.fillStyle = p.accentColor;
+        ctx.fillText('LOCK!', 0, 0);
+        ctx.restore();
+
+        ctx.restore();
+    }
+
+    if (isCooling) {
+        ctx.save();
+        ctx.globalAlpha = 0.92;
+        const arcRadius = 39;
+        const remainingRatio = Math.max(0, Math.min(1, p.cooldown / p.maxCooldown));
+
+        ctx.strokeStyle = 'rgba(51, 65, 85, 0.55)';
+        ctx.lineWidth = 2.0;
+        ctx.beginPath();
+        ctx.arc(0, 0, arcRadius, 0, Math.PI * 2);
+        ctx.stroke();
+
+        const startAngle = -Math.PI / 2 + Math.PI * 2 * (1 - remainingRatio);
+        const endAngle = -Math.PI / 2 + Math.PI * 2;
+
+        ctx.strokeStyle = '#94a3b8';
+        ctx.lineWidth = 3.0;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.arc(0, 0, arcRadius, startAngle, endAngle, false);
+        ctx.stroke();
+
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = 'bold 11px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(`JAMMED ${p.cooldown.toFixed(1)}s`, 0, arcRadius + 14);
+        ctx.restore();
+    } else {
+        ctx.save();
+        ctx.shadowBlur = 0;
+        ctx.font = '900 11px sans-serif';
+        ctx.textAlign = 'left';
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = '#090d16';
+        ctx.strokeText(p.name, 26, -22);
+        ctx.fillStyle = mainColor;
+        ctx.fillText(p.name, 26, -22);
+        ctx.restore();
+    }
+
+    ctx.restore();
+}
+
+/**
+ * ==========================================
+ * 9. 主循环与交互事件初始化
+ * ==========================================
+ */
+let lastTime = 0;
+let spawnTimer = 0;
+
+function resizeCanvas() {
+    width = window.innerWidth;
+    height = window.innerHeight;
+    canvas.width = width;
+    canvas.height = height;
+}
+
+function isTypingInInput() {
+    const el = document.activeElement;
+    return el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA');
+}
+
+function initUIEvents() {
+    const settingsPanel = document.getElementById('settings-panel');
+    const toggleBtn = document.getElementById('btn-toggle-settings');
+
+    toggleBtn.addEventListener('click', () => {
+        const isCollapsed = settingsPanel.classList.toggle('collapsed');
+        toggleBtn.innerText = isCollapsed ? '⚙️ 设置' : '✖️ 收起设置';
+    });
+
+    const sliderSpeed = document.getElementById('slider-speed');
+    const valSpeed = document.getElementById('val-speed');
+    sliderSpeed.addEventListener('input', (e) => {
+        CONFIG.speedScale = parseFloat(e.target.value);
+        valSpeed.innerText = `${CONFIG.speedScale.toFixed(2)}x`;
+    });
+
+    const sliderDamping = document.getElementById('slider-damping');
+    const valDamping = document.getElementById('val-damping');
+    sliderDamping.addEventListener('input', (e) => {
+        CONFIG.apexDamping = parseFloat(e.target.value);
+        valDamping.innerText = `${Math.round(CONFIG.apexDamping * 100)}%`;
+    });
+
+    const sliderInterval = document.getElementById('slider-interval');
+    const valInterval = document.getElementById('val-interval');
+    sliderInterval.addEventListener('input', (e) => {
+        CONFIG.spawnInterval = parseFloat(e.target.value);
+        valInterval.innerText = `${CONFIG.spawnInterval.toFixed(1)}s`;
+    });
+
+    const sliderReticleSens = document.getElementById('slider-reticle-sens');
+    const valReticleSens = document.getElementById('val-reticle-sens');
+    sliderReticleSens.addEventListener('input', (e) => {
+        CONFIG.reticleSensitivity = parseFloat(e.target.value);
+        valReticleSens.innerText = `${CONFIG.reticleSensitivity.toFixed(1)}x`;
+        syncReticleSensitivityToFilters();
+    });
+
+    const sliderGyroExp = document.getElementById('slider-gyro-exp');
+    const valGyroExp = document.getElementById('val-gyro-exp');
+    sliderGyroExp.addEventListener('input', (e) => {
+        CONFIG.gyroAccelExponent = parseFloat(e.target.value);
+        valGyroExp.innerText = CONFIG.gyroAccelExponent.toFixed(2);
+    });
+
+    document.getElementById('chk-invert-x').addEventListener('change', (e) => {
+        CONFIG.invertGyroX = e.target.checked;
+    });
+
+    document.getElementById('chk-invert-y').addEventListener('change', (e) => {
+        CONFIG.invertGyroY = e.target.checked;
+    });
+
+    const triggerAllRecenter = () => {
+        recenterPlayerReticle(0, true);
+        if (players[1].hasJoyCon) {
+            recenterPlayerReticle(1, false);
+        }
+    };
+    document.getElementById('btn-recenter').addEventListener('click', triggerAllRecenter);
+    document.getElementById('btn-panel-recenter').addEventListener('click', triggerAllRecenter);
+
+    document.querySelectorAll('.preset-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const idx = parseInt(btn.getAttribute('data-preset'), 10);
+            loadPresetToForm(idx);
+        });
+    });
+
+    document.getElementById('btn-apply-wordbank').addEventListener('click', () => {
+        const baseVal = document.getElementById('input-base').value;
+        const validVal = document.getElementById('input-valid').value;
+        const invalidVal = document.getElementById('input-invalid').value;
+
+        document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+        parseAndApplyWordBank(baseVal, validVal, invalidVal);
+    });
+
+    document.getElementById('btn-joycon').addEventListener('click', () => {
+        joyconManager.requestConnection();
+    });
+
+    document.getElementById('btn-word').addEventListener('click', () => {
+        const nextIdx = (currentPresetIdx + 1) % PRESET_LEVELS.length;
+        loadPresetToForm(nextIdx);
+    });
+}
+
+function init() {
+    canvas = document.getElementById('gameCanvas');
+    ctx = canvas.getContext('2d');
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    loadPresetToForm(0);
+    initUIEvents();
+    syncReticleSensitivityToFilters();
+
+    players[0].x = players[0].rawX = width * 0.35;
+    players[0].y = players[0].rawY = height * 0.5;
+    players[0].filterX.reset(players[0].x);
+    players[0].filterY.reset(players[0].y);
+
+    players[1].x = players[1].rawX = width * 0.65;
+    players[1].y = players[1].rawY = height * 0.5;
+    players[1].filterX.reset(players[1].x);
+    players[1].filterY.reset(players[1].y);
+
+    frisbees.push(new Frisbee());
+
+    window.addEventListener('mousemove', (e) => {
+        if (!players[0].hasJoyCon) {
+            players[0].x = players[0].rawX = e.clientX;
+            players[0].y = players[0].rawY = e.clientY;
+        }
+    });
+
+    window.addEventListener('mousedown', (e) => {
+        if (e.target.closest('#settings-wrapper') || e.target.closest('#ui-bar')) {
+            return;
+        }
+        if (e.button === 0) {
+            triggerFire(0);
+        }
+    });
+
+    window.addEventListener('keydown', (e) => {
+        if (isTypingInInput()) return;
+
+        const k = e.key.toLowerCase();
+        if (k in keys) keys[k] = true;
+        if (e.code === 'Space' && !e.repeat) {
+            e.preventDefault();
+            triggerFire(1);
+        }
+    });
+
+    window.addEventListener('keyup', (e) => {
+        const k = e.key.toLowerCase();
+        if (k in keys) keys[k] = false;
+    });
+
+    requestAnimationFrame(gameLoop);
+}
+
+function update(dt) {
+    spawnTimer += dt;
+    if (spawnTimer >= CONFIG.spawnInterval) {
+        spawnTimer = 0;
+        frisbees.push(new Frisbee());
+        if (Math.random() < 0.25) {
+            frisbees.push(new Frisbee());
+        }
+    }
+
+    const p2 = players[1];
+    if (!p2.hasJoyCon) {
+        if (keys.w) p2.y -= P2_SPEED * dt;
+        if (keys.s) p2.y += P2_SPEED * dt;
+        if (keys.a) p2.x -= P2_SPEED * dt;
+        if (keys.d) p2.x += P2_SPEED * dt;
+        p2.x = p2.rawX = Math.max(0, Math.min(width, p2.x));
+        p2.y = p2.rawY = Math.max(0, Math.min(height, p2.y));
+    }
+
+    players.forEach(p => {
+        if (p.cooldown > 0) {
+            p.cooldown = Math.max(0, p.cooldown - dt);
+        }
+        if (p.firePulse > 0) {
+            p.firePulse = Math.max(0, p.firePulse - dt * 10);
+        }
+        // 更新已收集词条卡槽的高亮脉冲衰减
+        p.collectedWords.forEach(item => {
+            if (item.flash > 0) {
+                item.flash = Math.max(0, item.flash - dt * 3.2);
+            }
+        });
+        // 检测准星是否锁定合法飞盘
+        p.isLocked = frisbees.some(f => f.isValid && f.hitStopFrames === 0 && Math.hypot(p.x - f.x, p.y - f.y) <= f.radius + 4);
+    });
+
+    // 更新飞盘 (含 3 帧 Hit-Stop 定格倒计时)
+    for (let i = frisbees.length - 1; i >= 0; i--) {
+        frisbees[i].update(dt);
+        if (frisbees[i].markedForDeletion) {
+            frisbees.splice(i, 1);
+        }
+    }
+
+    // 更新 4 扇形几何飞盘碎片
+    for (let i = discSectorShards.length - 1; i >= 0; i--) {
+        discSectorShards[i].update(dt);
+        if (discSectorShards[i].alpha <= 0) {
+            discSectorShards.splice(i, 1);
+        }
+    }
+
+    // 更新极细冲击波圆环
+    for (let i = shockwaveRings.length - 1; i >= 0; i--) {
+        shockwaveRings[i].update(dt);
+        if (shockwaveRings[i].life >= shockwaveRings[i].duration) {
+            shockwaveRings.splice(i, 1);
+        }
+    }
+
+    // 更新战利品合成词胶囊飞行动画
+    for (let i = flyingTokens.length - 1; i >= 0; i--) {
+        flyingTokens[i].update(dt);
+        if (flyingTokens[i].finished) {
+            flyingTokens.splice(i, 1);
+        }
+    }
+
+    // 更新细微边角碎屑粒子
+    for (let i = particles.length - 1; i >= 0; i--) {
+        particles[i].update(dt);
+        if (particles[i].alpha <= 0) {
+            particles.splice(i, 1);
+        }
+    }
+
+    // 更新漂浮文字
+    for (let i = floatingTexts.length - 1; i >= 0; i--) {
+        floatingTexts[i].update(dt);
+        if (floatingTexts[i].alpha <= 0) {
+            floatingTexts.splice(i, 1);
+        }
+    }
+}
+
+function draw() {
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(0, 0, width, height);
+
+    // 底部左右发射台几何示意
+    ctx.fillStyle = '#1e293b';
+    ctx.strokeStyle = '#334155';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, height - 40, 35, -Math.PI / 2, Math.PI / 2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(width, height - 40, 35, Math.PI / 2, -Math.PI / 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // 1. 绘制顶部母字、计分板与左右侧边栏垂直收集框
+    drawHUD(ctx);
+
+    // 2. 绘制极细半透明冲击波圆环
+    shockwaveRings.forEach(ring => ring.draw(ctx));
+
+    // 3. 绘制飞盘 (含处于 3 帧 Hit-Stop 裂纹定格态的飞盘)
+    frisbees.forEach(f => f.draw(ctx));
+
+    // 4. 绘制分裂飞散的 4 扇形几何碎片与细小碎屑
+    discSectorShards.forEach(s => s.draw(ctx));
+    particles.forEach(p => p.draw(ctx));
+
+    // 5. 绘制飞向战利品卡槽的合成词胶囊与提示文字
+    flyingTokens.forEach(token => token.draw(ctx));
+    floatingTexts.forEach(t => t.draw(ctx));
+
+    // 6. 最顶层绘制 P1 / P2 战术准星
+    players.forEach(p => drawCrosshair(ctx, p));
+}
+
+function gameLoop(timestamp) {
+    if (!lastTime) lastTime = timestamp;
+    const dt = Math.min((timestamp - lastTime) / 1000, 0.1);
+    lastTime = timestamp;
+
+    update(dt);
+    draw();
+
+    requestAnimationFrame(gameLoop);
+}
+
+window.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
