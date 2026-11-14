@@ -15,9 +15,9 @@ canvas { display: block; cursor: none; }
     z-index: 25; display: flex; gap: 8px; align-items: center;
 }
 
-/* 左上角折叠式设置面板容器 */
+/* 左上角折叠式设置面板容器（位于 P1 HUD 下方、收集槽上方） */
 #settings-wrapper {
-    position: absolute; top: 130px; left: 20px; z-index: 30;
+    position: absolute; top: 176px; left: 20px; z-index: 30;
     display: flex; flex-direction: column; align-items: flex-start; cursor: default;
 }
 
@@ -39,7 +39,7 @@ canvas { display: block; cursor: none; }
 }
 
 #settings-panel {
-    margin-top: 8px; width: 345px; max-height: calc(100vh - 175px); overflow-y: auto;
+    margin-top: 8px; width: 345px; max-height: calc(100vh - 220px); overflow-y: auto;
     background: rgba(15, 23, 42, 0.96); border: 1px solid #334155; border-radius: 10px;
     padding: 14px; color: #f8fafc; backdrop-filter: blur(12px);
     box-shadow: 0 16px 40px rgba(0,0,0,0.75);
@@ -496,7 +496,7 @@ const keys = { w: false, a: false, s: false, d: false };
 const P2_SPEED = 650;
 
 function getPlayerRackGeometry(idx) {
-    const rackW = 148, rackH = 224, rackX = idx === 0 ? 20 : width - 20 - rackW, rackY = 184;
+    const rackW = 148, rackH = 224, rackX = idx === 0 ? 20 : width - 20 - rackW, rackY = 214;
     const slotW = rackW - 20, slotH = 42, slotStartX = rackX + 10, slotStartY = rackY + 34, slotGap = 46;
     return {
         rackX, rackY, rackW, rackH, slotW, slotH, RACK_SLOT_COUNT,
@@ -722,8 +722,7 @@ class Frisbee {
         this.baseVx = (apexX - this.x) / (-this.baseVy / this.baseGravity);
         this.normVx = this.baseVx; this.normVy = this.baseVy;
         this.isValid = Math.random() < 0.65;
-        
-        // 核心：无论正误，随机从 3 款贴图中抽取一种，消除外观暗示
+
         this.skinIndex = Math.floor(Math.random() * 3);
         this.themeVariant = this.skinIndex;
 
@@ -786,7 +785,6 @@ function spawnFrisbeeFromLauncher(forceLeft = null) {
     if (gameState === 'PLAYING') sfx.playLaunch();
 }
 
-// 修复：干净整合 skinIndex，移除所有残留函数与未闭合的花括号
 class DiscSectorShard {
     constructor(disc, qIdx) {
         this.x = disc.x; this.y = disc.y; this.radius = disc.radius;
@@ -1079,40 +1077,35 @@ function draw() {
 }
 
 function gameLoop(ts) {
+    requestAnimationFrame(gameLoop);
     if (!lastTime) lastTime = ts;
     const dt = Math.min((ts - lastTime) / 1000, 0.1);
     lastTime = ts; update(dt); draw();
-    requestAnimationFrame(gameLoop);
 }
 
 window.addEventListener('DOMContentLoaded', initCoreEngine);
 </script>
 
 <!-- =========================================================================
-     模块二：独立可插拔美术层 (window.Theme) - 贴图加载 + 圆形裁切去白边 + 统一字形
-     ========================================================================= -->
-<!-- =========================================================================
-     模块二：独立可插拔美术层 (window.Theme) - 全贴图原画驱动版 (母舱 + HUD + 飞盘)
-     ========================================================================= -->
-<!-- =========================================================================
      模块二：独立可插拔美术层 (window.Theme) - 全贴图原画驱动版 (母舱 + HUD + 飞盘)
      ========================================================================= -->
 <script id="art-theme-module">
-// ----------------------------------------------------
-// 0. 预加载全部高清原画切图资源
-// ----------------------------------------------------
+function loadThemeImage(src) {
+    const img = new Image();
+    img.onerror = () => console.warn(`[Theme] 贴图加载失败，请检查路径或文件名: ${src}`);
+    img.src = src;
+    return img;
+}
+
 const DISC_SKIN_COUNT = 3;
 const discImages = [];
 for (let i = 1; i <= DISC_SKIN_COUNT; i++) {
-    const img = new Image();
-    img.src = `./assets/disc_${i}.png`;
-    discImages.push(img);
+    discImages.push(loadThemeImage(`./assets/disc_${i}.png`));
 }
 
-// 预加载母舱与双人 HUD 贴图
-const imgHubTV = new Image(); imgHubTV.src = './assets/hub_tv.png';
-const imgHudP1 = new Image(); imgHudP1.src = './assets/hud_p1.png';
-const imgHudP2 = new Image(); imgHudP2.src = './assets/hud_p2.png';
+const imgHubTV = loadThemeImage('./assets/hub_tv.png');
+const imgHudP1 = loadThemeImage('./assets/hud_p1.png');
+const imgHudP2 = loadThemeImage('./assets/hud_p2.png');
 
 window.Theme = {
 
@@ -1123,43 +1116,83 @@ window.Theme = {
         ctx.lineTo(x, y + h - c); ctx.lineTo(x, y + c); ctx.closePath();
     },
 
+    drawHazardStripeBar(ctx, x, y, w, h, accentColor) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.roundRect(x, y, w, h, 3);
+        ctx.fillStyle = '#090d16';
+        ctx.fill();
+        ctx.clip();
+
+        ctx.fillStyle = accentColor;
+        const stripeW = 8;
+        for (let sx = -h; sx < w + h; sx += stripeW * 2) {
+            ctx.beginPath();
+            ctx.moveTo(x + sx, y + h);
+            ctx.lineTo(x + sx + stripeW, y + h);
+            ctx.lineTo(x + sx + stripeW + h, y);
+            ctx.lineTo(x + sx + h, y);
+            ctx.closePath();
+            ctx.fill();
+        }
+        ctx.restore();
+
+        ctx.save();
+        ctx.strokeStyle = '#090d16';
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        ctx.roundRect(x, y, w, h, 3);
+        ctx.stroke();
+        ctx.restore();
+    },
+
+    drawMetalFastener(ctx, x, y, r, accentColor) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fillStyle = '#1e293b';
+        ctx.fill();
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = '#090d16';
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(x, y, r * 0.45, 0, Math.PI * 2);
+        ctx.fillStyle = accentColor;
+        ctx.fill();
+        ctx.restore();
+    },
+
     // ----------------------------------------------------
     // 1. 顶部中央：词根母舱 (hub_tv.png) + 荧光喷漆母字 + LED 倒计时
     // ----------------------------------------------------
     drawCenterStageMonitor(ctx, width, activeWordBank, roundTimeLeft, stageIdx) {
         const cx = width / 2;
-        // 保持母舱宽高比例（原画约 1.15 : 1）
         const tvW = 205, tvH = 185;
         const tvX = cx - tvW / 2, tvY = 42;
 
         ctx.save();
-        // 绘制母舱贴图
         if (imgHubTV.complete && imgHubTV.naturalWidth > 0) {
             ctx.drawImage(imgHubTV, tvX, tvY, tvW, tvH);
         } else {
-            // 贴图加载前的工程兜底
             ctx.fillStyle = '#1e293b';
             ctx.fillRect(tvX, tvY, tvW, tvH);
         }
 
         // --- A. 电视 CRT 荧光屏正中心：激光喷漆母字 ---
-        // 屏幕中心坐标微调（位于母舱上半部）
         const screenCx = tvX + tvW * 0.495;
         const screenCy = tvY + tvH * 0.40;
 
         ctx.save();
-        // 荧光喷漆霓虹绿外发光
         ctx.shadowColor = '#4ade80';
         ctx.shadowBlur = 18;
         ctx.font = '900 56px "PingFang SC", "Microsoft YaHei", "Arial Black", sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
 
-        // 喷漆深绿阴影底层
         ctx.fillStyle = '#15803d';
         ctx.fillText(activeWordBank.base, screenCx + 2, screenCy + 2);
 
-        // 喷漆明亮黄绿表层
         ctx.fillStyle = '#ccff00';
         ctx.fillText(activeWordBank.base, screenCx, screenCy);
         ctx.restore();
@@ -1170,7 +1203,6 @@ window.Theme = {
         const ss = (sec % 60).toString().padStart(2, '0');
         const timeText = `${mm}:${ss}`;
 
-        // 时钟小屏幕中心坐标
         const clockCx = tvX + tvW * 0.495;
         const clockCy = tvY + tvH * 0.88;
 
@@ -1198,7 +1230,6 @@ window.Theme = {
         const hudImg = isP1 ? imgHudP1 : imgHudP2;
 
         ctx.save();
-        // 1. 绘制面板金属底盘贴图
         if (hudImg.complete && hudImg.naturalWidth > 0) {
             ctx.drawImage(hudImg, hudX, hudY, hudW, hudH);
         } else {
@@ -1206,8 +1237,7 @@ window.Theme = {
             ctx.fillRect(hudX, hudY, hudW, hudH);
         }
 
-        // 2. SCORE 右上方数显黑框
-        // 映射坐标：位于面板右侧上部
+        // SCORE 右上方数显黑框
         const scoreBoxX = hudX + hudW * 0.58;
         const scoreBoxY = hudY + hudH * 0.22;
         const scoreBoxW = hudW * 0.35;
@@ -1226,18 +1256,15 @@ window.Theme = {
         ctx.fillText(`${p.score}`, scoreBoxX + scoreBoxW / 2, scoreBoxY + scoreBoxH / 2 + 1);
         ctx.restore();
 
-        // 3. INK / AMMO 墨水管与动态液位
-        // 映射坐标：位于面板右下方黑框
+        // INK / AMMO 墨水管与动态液位
         const ammoBoxX = hudX + hudW * 0.60;
         const ammoBoxY = hudY + hudH * 0.64;
         const ammoBoxW = hudW * 0.32;
         const ammoBoxH = hudH * 0.24;
 
-        // 玩家当前墨水量（以 200 为满血基准，每格血 25 墨水）
         const ammoVal = Math.round((p.hp / p.maxHp) * 200);
 
         ctx.save();
-        // 绘制管内微光墨水填充进度条
         const fillW = Math.max(0, (p.hp / p.maxHp) * (ammoBoxW - 6));
         const inkGrad = ctx.createLinearGradient(ammoBoxX + 3, 0, ammoBoxX + 3 + fillW, 0);
         if (isP1) {
@@ -1250,7 +1277,6 @@ window.Theme = {
         ctx.roundRect(ammoBoxX + 3, ammoBoxY + 3, fillW, ammoBoxH - 6, 3);
         ctx.fill();
 
-        // 墨水数值数字显示
         ctx.shadowColor = isP1 ? '#facc15' : '#e879f9';
         ctx.shadowBlur = 6;
         ctx.font = '900 20px "Courier New", monospace';
@@ -1269,7 +1295,7 @@ window.Theme = {
     drawDiscFace(ctx, R, isValid, themeVariant, angle, char, skinIndex = 0) {
         const actualSkin = (skinIndex !== undefined ? skinIndex : (themeVariant || 0)) % DISC_SKIN_COUNT;
         const img = discImages[actualSkin];
-        const clipRadius = R * 0.96; // 裁切圆，彻底切除 JPG/PNG 四角白边
+        const clipRadius = R * 0.96;
 
         ctx.save();
         ctx.beginPath();
@@ -1321,7 +1347,6 @@ window.Theme = {
         ctx.restore();
     },
 
-    // 2.5D 空中仰角立体化与击中顿帧裂纹
     drawDisc(ctx, disc) {
         const R = disc.radius;
         const scaleY = 1.0 - 0.16 * Math.min(1.0, Math.abs(disc.normVy) / 320);
@@ -1415,11 +1440,7 @@ window.Theme = {
     },
 
     drawCollectionRack(ctx, p, pIdx, geo) {
-        // 下移卡槽初始 Y 坐标，避开上方全新的高质感 HUD 面板
-        const rackW = 148, rackH = 224;
-        const rackX = pIdx === 0 ? 20 : ctx.canvas.width - 20 - rackW;
-        const rackY = 188;
-        const { RACK_SLOT_COUNT } = geo;
+        const { rackX, rackY, rackW, rackH, RACK_SLOT_COUNT } = geo;
 
         ctx.save();
         ctx.shadowColor = p.color; ctx.shadowBlur = 12;
@@ -1432,8 +1453,7 @@ window.Theme = {
         ctx.fillText(`${p.name} 词组收集槽 (${p.collectedWords.length}/${RACK_SLOT_COUNT})`, rackX + rackW / 2, rackY + 19);
 
         for (let i = 0; i < RACK_SLOT_COUNT; i++) {
-            const slotStartX = rackX + 10, slotStartY = rackY + 34, slotGap = 46, slotW = rackW - 20, slotH = 42;
-            const sx = slotStartX, sy = slotStartY + i * slotGap;
+            const { x: sx, y: sy, w: slotW, h: slotH } = geo.getSlotRect(i);
             const item = p.collectedWords[i];
 
             if (!item) {
@@ -1527,3 +1547,5 @@ window.Theme = {
     }
 };
 </script>
+</body>
+</html>
