@@ -9,13 +9,13 @@
 body, html { width: 100%; height: 100%; overflow: hidden; background: #0b1120; font-family: 'PingFang SC', 'Microsoft YaHei', 'Heiti SC', sans-serif; color: #f8fafc; }
 canvas { display: block; cursor: none; }
 
-/* 顶部中央快捷操作栏 (避开左上P1与右上P2金属HUD) */
+/* 顶部中央快捷操作栏 */
 #ui-bar {
     position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
     z-index: 25; display: flex; gap: 8px; align-items: center;
 }
 
-/* 左上角折叠式设置面板容器 (位于 P1 金属 HUD 下方) */
+/* 左上角折叠式设置面板容器 */
 #settings-wrapper {
     position: absolute; top: 130px; left: 20px; z-index: 30;
     display: flex; flex-direction: column; align-items: flex-start; cursor: default;
@@ -70,7 +70,7 @@ input[type="range"] { width: 100%; accent-color: #38bdf8; cursor: pointer; }
 .input-text:focus, .input-textarea:focus { border-color: #38bdf8; }
 .input-textarea { resize: vertical; min-height: 44px; line-height: 1.4; }
 
-/* 全状态覆盖层：开始待机画面 & 结束结算画面 */
+/* 状态覆盖层 */
 .overlay-screen {
     position: absolute; inset: 0; z-index: 40;
     background: radial-gradient(circle at center, rgba(15, 23, 42, 0.84) 0%, rgba(9, 13, 22, 0.95) 100%);
@@ -233,7 +233,7 @@ input[type="range"] { width: 100%; accent-color: #38bdf8; cursor: pointer; }
     <button id="btn-end-round" class="btn">🏁 提前结算</button>
 </div>
 
-<!-- 状态 1：工业街机风开始/待机画面 -->
+<!-- 状态 1：开始/待机画面 -->
 <div id="start-overlay" class="overlay-screen">
     <div class="arcade-card">
         <div class="arcade-title">⚡ 双人汉字飞盘射击 ⚡</div>
@@ -245,7 +245,7 @@ input[type="range"] { width: 100%; accent-color: #38bdf8; cursor: pointer; }
                 <ul class="guide-list">
                     <li>🎮 <b>Joy-Con 体感</b>：激光笔握法，ZR/ZL 射击，按摇杆归中</li>
                     <li>🖱️ <b>键鼠兜底模式</b>：移动鼠标瞄准，点击鼠标左键开火</li>
-                    <li>🎯 <b>组词规则</b>：击中能与顶部【母字】组词的亮色飞盘 +100分</li>
+                    <li>🎯 <b>组词规则</b>：击中能与顶部【母字】组词的飞盘 +100分</li>
                 </ul>
             </div>
             <div class="guide-box p2">
@@ -253,12 +253,12 @@ input[type="range"] { width: 100%; accent-color: #38bdf8; cursor: pointer; }
                 <ul class="guide-list">
                     <li>🎮 <b>Joy-Con 体感</b>：支持第 2 只手柄独立 60Hz 陀螺仪瞄准</li>
                     <li>⌨️ <b>键盘兜底模式</b>：使用 <b>W / A / S / D</b> 移动准星，<b>空格键</b>开火</li>
-                    <li>⚠️ <b>陷阱惩罚</b>：误击黑黄警示条纹干扰飞盘扣 1 格血并卡壳冷却</li>
+                    <li>⚠️ <b>陷阱惩罚</b>：误击不能组词的干扰飞盘扣 1 格血并卡壳冷却</li>
                 </ul>
             </div>
         </div>
 
-        <div style="text-align:center;font-size:13px;color:#94a3b8;margin-bottom:10px;">选择挑战关卡（也可在左上角 ⚙️ 设置中自定义题库与飞盘速度）：</div>
+        <div style="text-align:center;font-size:13px;color:#94a3b8;margin-bottom:10px;">选择挑战关卡：</div>
         <div class="level-selector-bar">
             <button class="level-chip active" data-start-level="0">第 1 关：母字【电】</button>
             <button class="level-chip" data-start-level="1">第 2 关：母字【学】</button>
@@ -272,7 +272,7 @@ input[type="range"] { width: 100%; accent-color: #38bdf8; cursor: pointer; }
     </div>
 </div>
 
-<!-- 状态 3：双人对战结算画面 -->
+<!-- 状态 3：结算画面 -->
 <div id="result-overlay" class="overlay-screen hidden">
     <div class="arcade-card">
         <div id="result-winner-banner" class="arcade-title">🏆 对战结算 🏆</div>
@@ -315,13 +315,10 @@ input[type="range"] { width: 100%; accent-color: #38bdf8; cursor: pointer; }
 
 <!-- =========================================================================
      模块一：核心物理引擎、Web Audio 合成器、1-Euro 滤波与 Joy-Con 驱动层
-     (此模块与具体美术完全解耦，所有视觉渲染均委托给 window.Theme 接口)
      ========================================================================= -->
 <script id="core-and-engine">
-// 预置全局美术命名空间（具体实现位于下一个 script 标签，方便后期独立替换美术）
 window.Theme = window.Theme || {};
 
-// 0. Web Audio API 全套内置合成音效
 class SoundSynthesizer {
     constructor() { this.ctx = null; this.volume = 0.75; this.muted = false; }
     unlock() {
@@ -409,7 +406,6 @@ class SoundSynthesizer {
 }
 const sfx = new SoundSynthesizer();
 
-// 1. 标准 1-Euro Filter (自适应低通抗抖动滤波器)
 class LowPassFilter {
     constructor() { this.y = null; this.s = null; }
     filter(v, a) { this.s = this.y === null ? v : a * v + (1 - a) * this.s; this.y = v; return this.s; }
@@ -433,7 +429,6 @@ class OneEuroFilter {
     reset(v = null) { this.xF.reset(v); this.dxF.reset(0); this.lastTime = null; }
 }
 
-// 2. 全局配置、预置题库与状态机
 const CONFIG = {
     speedScale: 0.50,
     apexDamping: 0.75,
@@ -611,7 +606,6 @@ function triggerRoundResult(reasonText = '本关倒计时结束 · 战利品清�
     document.getElementById('result-overlay').classList.remove('hidden');
 }
 
-// 3. Joy-Con WebHID 60Hz 陀螺仪体感驱动层
 class JoyConHIDManager {
     constructor() {
         this.controllers = [null, null];
@@ -717,7 +711,6 @@ class JoyConHIDManager {
 }
 const joyconManager = new JoyConHIDManager();
 
-// 4. 物理实体类 (绘制全部委托给 window.Theme)
 class Frisbee {
     constructor(forceLeft = null) {
         this.radius = 52;
@@ -729,8 +722,11 @@ class Frisbee {
         this.baseVx = (apexX - this.x) / (-this.baseVy / this.baseGravity);
         this.normVx = this.baseVx; this.normVy = this.baseVy;
         this.isValid = Math.random() < 0.65;
-        this.skinIndex = Math.floor(Math.random() * 3); // 随机绑定 disc_1 ~ disc_3
+        
+        // 核心：无论正误，随机从 3 款贴图中抽取一种，消除外观暗示
+        this.skinIndex = Math.floor(Math.random() * 3);
         this.themeVariant = this.skinIndex;
+
         if (this.isValid) {
             const it = activeWordBank.validList[Math.floor(Math.random() * activeWordBank.validList.length)];
             this.char = it.char; this.fullWord = it.word;
@@ -790,14 +786,12 @@ function spawnFrisbeeFromLauncher(forceLeft = null) {
     if (gameState === 'PLAYING') sfx.playLaunch();
 }
 
+// 修复：干净整合 skinIndex，移除所有残留函数与未闭合的花括号
 class DiscSectorShard {
     constructor(disc, qIdx) {
         this.x = disc.x; this.y = disc.y; this.radius = disc.radius;
         this.isValid = disc.isValid; this.themeVariant = disc.themeVariant;
-        
-        // 【新增这一行】：继承被击碎飞盘绑定的贴图索引
         this.skinIndex = disc.skinIndex !== undefined ? disc.skinIndex : 0;
-
         this.discAngle = disc.angle; this.char = disc.char;
         this.startAngle = qIdx * (Math.PI / 2) - Math.PI * 0.22;
         this.endAngle = this.startAngle + Math.PI / 2;
@@ -819,27 +813,7 @@ class DiscSectorShard {
         ctx.beginPath(); ctx.moveTo(0, 0);
         ctx.arc(0, 0, R + 3, this.startAngle, this.endAngle, false); ctx.closePath();
         ctx.save(); ctx.clip();
-
-        // 【修改这一行】：在末尾把 this.skinIndex 传进去，确保碎片使用同一张贴图
         window.Theme.drawDiscFace(ctx, R, this.isValid, this.themeVariant, this.discAngle, this.char, this.skinIndex);
-
-        ctx.restore();
-        ctx.strokeStyle = '#090d16'; ctx.lineWidth = 2.5; ctx.stroke(); ctx.restore();
-    }
-}
-    update(dt) {
-        this.x += this.vx * dt; this.y += this.vy * dt; this.vy += this.gravity * dt;
-        this.shardRotation += this.rotSpeed * dt; this.alpha -= this.decay * dt;
-    }
-    draw(ctx) {
-        if (this.alpha <= 0 || !window.Theme.drawDiscFace) return;
-        const R = this.radius;
-        ctx.save(); ctx.globalAlpha = Math.max(0, this.alpha);
-        ctx.translate(this.x, this.y); ctx.rotate(this.shardRotation);
-        ctx.beginPath(); ctx.moveTo(0, 0);
-        ctx.arc(0, 0, R + 3, this.startAngle, this.endAngle, false); ctx.closePath();
-        ctx.save(); ctx.clip();
-        window.Theme.drawDiscFace(ctx, R, this.isValid, this.themeVariant, this.discAngle, this.char);
         ctx.restore();
         ctx.strokeStyle = '#090d16'; ctx.lineWidth = 2.5; ctx.stroke(); ctx.restore();
     }
@@ -927,8 +901,8 @@ class FloatingText {
 
 function shatterDiscAfterHitStop(disc) {
     for (let q = 0; q < 4; q++) discSectorShards.push(new DiscSectorShard(disc, q));
-    const cols = disc.themeVariant === 0 ? ['#e2ff00', '#14b8a6'] : ['#f97316', '#2dd4bf'];
-    for (let i = 0; i < 8; i++) particles.push(new ShardParticle(disc.x, disc.y, cols[i % 2]));
+    const cols = ['#e2ff00', '#f97316', '#22d3ee'];
+    for (let i = 0; i < 8; i++) particles.push(new ShardParticle(disc.x, disc.y, cols[i % 3]));
     shockwaveRings.push(new ShockwaveRing(disc.x, disc.y));
     if (disc.hitByPlayerIndex >= 0) {
         players[disc.hitByPlayerIndex].scoreFlashTimer = 0.40;
@@ -966,7 +940,6 @@ function triggerFire(pIdx) {
     }
 }
 
-// 5. 事件绑定与主循环驱动
 let lastTime = 0, spawnTimer = 0;
 function resizeCanvas() { width = window.innerWidth; height = window.innerHeight; canvas.width = width; canvas.height = height; }
 function isTyping() { const el = document.activeElement; return el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA'); }
@@ -1114,25 +1087,11 @@ function gameLoop(ts) {
 
 window.addEventListener('DOMContentLoaded', initCoreEngine);
 </script>
-<!-- [PART 1 完毕，请回复“继续”输出独立美术模块 <script id="art-theme-module"> 直至 </html>] -->
-    <!-- =========================================================================
-     模块二：独立可插拔美术层 (window.Theme)
-     后期如需修改任何美术（如飞盘、准星、血条、背景），只需单独重写本标签内对应的方法即可！
-     ========================================================================= -->
-<!-- =========================================================================
-     模块二：独立可插拔美术层 (window.Theme) - 第一步：高对比工业街机飞盘升级版
-     ========================================================================= -->
-<!-- =========================================================================
-     模块二：独立可插拔美术层 (window.Theme) - 拟真原画复刻版 (加入 3D 球面光与多层倒角)
-     ========================================================================= -->
-<script id="art-theme-module">
+
 <!-- =========================================================================
      模块二：独立可插拔美术层 (window.Theme) - 贴图加载 + 圆形裁切去白边 + 统一字形
      ========================================================================= -->
 <script id="art-theme-module">
-// ----------------------------------------------------
-// 0. 预加载 3 款空白飞盘高清贴图资源
-// ----------------------------------------------------
 const DISC_SKIN_COUNT = 3;
 const discImages = [];
 for (let i = 1; i <= DISC_SKIN_COUNT; i++) {
@@ -1142,10 +1101,6 @@ for (let i = 1; i <= DISC_SKIN_COUNT; i++) {
 }
 
 window.Theme = {
-
-    // ----------------------------------------------------
-    // 通用工业几何辅助元件
-    // ----------------------------------------------------
     traceChamferRect(ctx, x, y, w, h, c) {
         ctx.beginPath();
         ctx.moveTo(x + c, y); ctx.lineTo(x + w - c, y); ctx.lineTo(x + w, y + c);
@@ -1181,34 +1136,29 @@ window.Theme = {
         ctx.restore();
     },
 
-    // ----------------------------------------------------
-    // 1. 贴图绘制 + 圆形遮罩切除白色背景 + 居中高对比汉字
-    // ----------------------------------------------------
+    // 贴图绘制 + 圆形遮罩切除白色背景 + 居中高对比汉字
     drawDiscFace(ctx, R, isValid, themeVariant, angle, char, skinIndex = 0) {
         const actualSkin = (skinIndex !== undefined ? skinIndex : (themeVariant || 0)) % DISC_SKIN_COUNT;
         const img = discImages[actualSkin];
-        const clipRadius = R * 0.96; // 核心：按 0.96R 建立裁切圆，彻底切掉 JPG 外部纯白边角
+        const clipRadius = R * 0.96; // 核心：按 0.96R 建立裁切圆，切掉 JPG 四角纯白背景
 
-        // --- A. 圆形裁切与贴图映射 ---
         ctx.save();
         ctx.beginPath();
         ctx.arc(0, 0, clipRadius, 0, Math.PI * 2);
-        ctx.clip(); // 仅保留圆盘内部
+        ctx.clip();
 
         if (img && img.complete && img.naturalWidth > 0) {
             ctx.save();
-            ctx.rotate(angle); // 贴图随飞盘旋转
-            // 贴图等比铺满飞盘圆周
+            ctx.rotate(angle);
             ctx.drawImage(img, -R, -R, R * 2, R * 2);
             ctx.restore();
         } else {
-            // 图片未完成加载时的工业风兜底底色
             ctx.fillStyle = '#1e293b';
             ctx.fillRect(-R, -R, R * 2, R * 2);
         }
-        ctx.restore(); // 恢复裁切状态
+        ctx.restore();
 
-        // --- B. 工业机械压圈与防白边黑锁边 ---
+        // 黑色机械锁边
         ctx.save();
         ctx.strokeStyle = '#090d16';
         ctx.lineWidth = 2.8;
@@ -1216,7 +1166,7 @@ window.Theme = {
         ctx.arc(0, 0, clipRadius, 0, Math.PI * 2);
         ctx.stroke();
 
-        // 顶部固定方向的高光月牙弧（增加立体凸面感）
+        // 顶部高光弧
         ctx.beginPath();
         ctx.arc(0, 0, clipRadius - 2, -Math.PI * 0.82, -Math.PI * 0.18);
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.70)';
@@ -1225,39 +1175,32 @@ window.Theme = {
         ctx.stroke();
         ctx.restore();
 
-        // --- C. 盘心汉字（超粗黑体，占盘径约 58%，双层高对比度） ---
-        // 关键教学逻辑：正确字与错误字使用完全一致的字体描边规则，消除一切外观暗示！
+        // 盘心汉字（超粗黑体，占盘径 58%）
         ctx.save();
-        const fontSize = Math.round(R * 2 * 0.58); // 占直径约 58%
+        const fontSize = Math.round(R * 2 * 0.58);
         ctx.font = `900 ${fontSize}px "PingFang SC", "Microsoft YaHei", "Arial Black", sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.lineJoin = 'round';
 
-        // 纯黑厚实外描边，压制任何复杂贴图底色
         ctx.lineWidth = 11;
         ctx.strokeStyle = '#000000';
         ctx.strokeText(char, 0, 2);
 
-        // 纯白高亮文字芯，确保飞行中毫秒级认字
         ctx.fillStyle = '#ffffff';
         ctx.fillText(char, 0, 2);
         ctx.restore();
     },
 
-    // ----------------------------------------------------
-    // 2. 飞盘 2.5D 空中仰角立体化与击中裂纹反馈
-    // ----------------------------------------------------
+    // 2.5D 空中仰角立体化与击中裂纹反馈
     drawDisc(ctx, disc) {
         const R = disc.radius;
-        // 飞行仰角微调纵向缩放
         const scaleY = 1.0 - 0.16 * Math.min(1.0, Math.abs(disc.normVy) / 320);
 
         ctx.save();
         ctx.translate(disc.x, disc.y);
         ctx.scale(1.0, scaleY);
 
-        // 立体底座厚度与投影
         const lip = (1.0 - scaleY) * 26 + 4;
         ctx.save();
         ctx.shadowColor = 'rgba(0, 0, 0, 0.75)';
@@ -1269,10 +1212,8 @@ window.Theme = {
         ctx.fill();
         ctx.restore();
 
-        // 绘制贴图盘面（传入当前飞盘绑定的 skinIndex）
         this.drawDiscFace(ctx, R, disc.isValid, disc.themeVariant, disc.angle, disc.char, disc.skinIndex);
 
-        // 命中合法字时的 3 帧打击顿帧（Hit-Stop）锯齿碎裂裂纹
         if (disc.hitStopFrames > 0) {
             ctx.save();
             ctx.beginPath();
@@ -1281,7 +1222,6 @@ window.Theme = {
             ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
             ctx.fillRect(-R, -R, R * 2, R * 2);
 
-            // 白色加粗放射状裂纹
             ctx.strokeStyle = '#090d16'; ctx.lineWidth = 7; ctx.lineCap = 'round';
             const crackAngles = [-0.65, 0.85, 2.40, -2.15];
             crackAngles.forEach((a, i) => {
@@ -1305,9 +1245,6 @@ window.Theme = {
         ctx.restore();
     },
 
-    // ----------------------------------------------------
-    // 3. 背景蓝图网格
-    // ----------------------------------------------------
     drawBackground(ctx, width, height) {
         ctx.fillStyle = '#0b1120'; ctx.fillRect(0, 0, width, height);
         ctx.save();
@@ -1320,9 +1257,6 @@ window.Theme = {
         ctx.restore();
     },
 
-    // ----------------------------------------------------
-    // 4. 顶部中央关卡母字指示器
-    // ----------------------------------------------------
     drawCenterStageMonitor(ctx, width, activeWordBank, roundTimeLeft, stageIdx) {
         const cx = width / 2, topY = 52;
         ctx.save();
@@ -1356,9 +1290,6 @@ window.Theme = {
         ctx.restore();
     },
 
-    // ----------------------------------------------------
-    // 5. 玩家 HUD (生命与记分板)
-    // ----------------------------------------------------
     drawPlayerHUD(ctx, p, pIdx, width) {
         const isP1 = pIdx === 0, theme = p.color, bright = p.accentColor;
         const isLow = p.hp <= 2;
@@ -1445,9 +1376,6 @@ window.Theme = {
         ctx.restore();
     },
 
-    // ----------------------------------------------------
-    // 6. 词组收集框与词条徽章
-    // ----------------------------------------------------
     drawPhraseBadge(ctx, w, h, wordText, pIdx, flash = 0) {
         const isP1 = pIdx === 0, hw = w / 2, hh = h / 2;
         ctx.save();
@@ -1502,9 +1430,6 @@ window.Theme = {
         ctx.restore();
     },
 
-    // ----------------------------------------------------
-    // 7. 发射器与准星
-    // ----------------------------------------------------
     drawLaunchers(ctx, launchers, width, height) {
         launchers.forEach((l, idx) => {
             const isL = idx === 0, theme = isL ? '#e2ff00' : '#d946ef', shift = l.recoil * 14;
@@ -1575,3 +1500,5 @@ window.Theme = {
     }
 };
 </script>
+</body>
+</html>
