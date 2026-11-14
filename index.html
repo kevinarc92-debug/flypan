@@ -728,7 +728,9 @@ class Frisbee {
         this.baseVy = -Math.sqrt(2 * this.baseGravity * (this.y - apexY));
         this.baseVx = (apexX - this.x) / (-this.baseVy / this.baseGravity);
         this.normVx = this.baseVx; this.normVy = this.baseVy;
-        this.isValid = Math.random() < 0.65; this.themeVariant = Math.random() < 0.55 ? 0 : 1;
+        this.isValid = Math.random() < 0.65;
+        this.skinIndex = Math.floor(Math.random() * 3); // 随机绑定 disc_1 ~ disc_3
+        this.themeVariant = this.skinIndex;
         if (this.isValid) {
             const it = activeWordBank.validList[Math.floor(Math.random() * activeWordBank.validList.length)];
             this.char = it.char; this.fullWord = it.word;
@@ -792,6 +794,10 @@ class DiscSectorShard {
     constructor(disc, qIdx) {
         this.x = disc.x; this.y = disc.y; this.radius = disc.radius;
         this.isValid = disc.isValid; this.themeVariant = disc.themeVariant;
+        
+        // 【新增这一行】：继承被击碎飞盘绑定的贴图索引
+        this.skinIndex = disc.skinIndex !== undefined ? disc.skinIndex : 0;
+
         this.discAngle = disc.angle; this.char = disc.char;
         this.startAngle = qIdx * (Math.PI / 2) - Math.PI * 0.22;
         this.endAngle = this.startAngle + Math.PI / 2;
@@ -801,6 +807,26 @@ class DiscSectorShard {
         this.x += Math.cos(mid) * 5; this.y += Math.sin(mid) * 5;
         this.alpha = 1.0; this.decay = 1.55;
     }
+    update(dt) {
+        this.x += this.vx * dt; this.y += this.vy * dt; this.vy += this.gravity * dt;
+        this.shardRotation += this.rotSpeed * dt; this.alpha -= this.decay * dt;
+    }
+    draw(ctx) {
+        if (this.alpha <= 0 || !window.Theme.drawDiscFace) return;
+        const R = this.radius;
+        ctx.save(); ctx.globalAlpha = Math.max(0, this.alpha);
+        ctx.translate(this.x, this.y); ctx.rotate(this.shardRotation);
+        ctx.beginPath(); ctx.moveTo(0, 0);
+        ctx.arc(0, 0, R + 3, this.startAngle, this.endAngle, false); ctx.closePath();
+        ctx.save(); ctx.clip();
+
+        // 【修改这一行】：在末尾把 this.skinIndex 传进去，确保碎片使用同一张贴图
+        window.Theme.drawDiscFace(ctx, R, this.isValid, this.themeVariant, this.discAngle, this.char, this.skinIndex);
+
+        ctx.restore();
+        ctx.strokeStyle = '#090d16'; ctx.lineWidth = 2.5; ctx.stroke(); ctx.restore();
+    }
+}
     update(dt) {
         this.x += this.vx * dt; this.y += this.vy * dt; this.vy += this.gravity * dt;
         this.shardRotation += this.rotSpeed * dt; this.alpha -= this.decay * dt;
@@ -1100,8 +1126,26 @@ window.addEventListener('DOMContentLoaded', initCoreEngine);
      模块二：独立可插拔美术层 (window.Theme) - 拟真原画复刻版 (加入 3D 球面光与多层倒角)
      ========================================================================= -->
 <script id="art-theme-module">
+<!-- =========================================================================
+     模块二：独立可插拔美术层 (window.Theme) - 贴图加载 + 圆形裁切去白边 + 统一字形
+     ========================================================================= -->
+<script id="art-theme-module">
+// ----------------------------------------------------
+// 0. 预加载 3 款空白飞盘高清贴图资源
+// ----------------------------------------------------
+const DISC_SKIN_COUNT = 3;
+const discImages = [];
+for (let i = 1; i <= DISC_SKIN_COUNT; i++) {
+    const img = new Image();
+    img.src = `./assets/disc_${i}.jpg`;
+    discImages.push(img);
+}
+
 window.Theme = {
 
+    // ----------------------------------------------------
+    // 通用工业几何辅助元件
+    // ----------------------------------------------------
     traceChamferRect(ctx, x, y, w, h, c) {
         ctx.beginPath();
         ctx.moveTo(x + c, y); ctx.lineTo(x + w - c, y); ctx.lineTo(x + w, y + c);
@@ -1138,230 +1182,106 @@ window.Theme = {
     },
 
     // ----------------------------------------------------
-    // 飞盘精细绘制：带 3D 凸面球体受光、金属倒角与贴纸原画质感
+    // 1. 贴图绘制 + 圆形遮罩切除白色背景 + 居中高对比汉字
     // ----------------------------------------------------
-    drawDiscFace(ctx, R, isValid, themeVariant, angle, char) {
+    drawDiscFace(ctx, R, isValid, themeVariant, angle, char, skinIndex = 0) {
+        const actualSkin = (skinIndex !== undefined ? skinIndex : (themeVariant || 0)) % DISC_SKIN_COUNT;
+        const img = discImages[actualSkin];
+        const clipRadius = R * 0.96; // 核心：按 0.96R 建立裁切圆，彻底切掉 JPG 外部纯白边角
+
+        // --- A. 圆形裁切与贴图映射 ---
         ctx.save();
-        ctx.rotate(angle);
+        ctx.beginPath();
+        ctx.arc(0, 0, clipRadius, 0, Math.PI * 2);
+        ctx.clip(); // 仅保留圆盘内部
 
-        if (isValid) {
-            const isYellowTeal = themeVariant === 0;
-
-            // 1. 最底层：黑色工业防撞外包胶
-            ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2);
-            ctx.fillStyle = '#090d16'; ctx.fill();
-
-            // 2. 主体彩色外环（原画级渐变：黄绿款从亮绿到电光黄，橙款从亮橙到烈焰红）
-            const rimR = R - 2.5;
-            const rimG = ctx.createLinearGradient(-rimR * 0.8, -rimR * 0.8, rimR * 0.8, rimR * 0.8);
-            if (isYellowTeal) {
-                rimG.addColorStop(0.00, '#e8ff00'); // 电光黄
-                rimG.addColorStop(0.35, '#a3e635'); // 嫩青黄
-                rimG.addColorStop(0.65, '#06b6d4'); // 艳青蓝
-                rimG.addColorStop(1.00, '#0284c7'); // 深水蓝
-            } else {
-                rimG.addColorStop(0.00, '#ff9900'); // 亮金橙
-                rimG.addColorStop(0.40, '#ff4d00'); // 炽烈红橙
-                rimG.addColorStop(0.85, '#dc2626'); // 深赤
-                rimG.addColorStop(1.00, '#1c1917'); // 局部烧焦黑
-            }
-            ctx.beginPath(); ctx.arc(0, 0, rimR, 0, Math.PI * 2);
-            ctx.fillStyle = rimG; ctx.fill();
-
-            // 3. 机械分模线与凹槽暗影
-            ctx.strokeStyle = 'rgba(0,0,0,0.7)'; ctx.lineWidth = 2.5;
-            ctx.beginPath(); ctx.arc(0, 0, R * 0.82, 0, Math.PI * 2); ctx.stroke();
-            ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 1;
-            ctx.beginPath(); ctx.arc(0, 0, R * 0.80, 0, Math.PI * 2); ctx.stroke();
-
-            // 4. 盘心凹坑（带环境光遮蔽阴影）
-            const coreR = R * 0.70;
-            const coreG = ctx.createRadialGradient(0, 0, coreR * 0.2, 0, 0, coreR);
-            if (isYellowTeal) {
-                coreG.addColorStop(0.0, '#38bdf8'); // 亮湖蓝
-                coreG.addColorStop(0.7, '#0284c7');
-                coreG.addColorStop(1.0, '#082f49'); // 深凹槽黑蓝
-            } else {
-                coreG.addColorStop(0.0, '#ff7a00'); // 极亮橙
-                coreG.addColorStop(0.6, '#ea580c');
-                coreG.addColorStop(1.0, '#7c2d12'); // 深凹槽焦褐
-            }
-            ctx.beginPath(); ctx.arc(0, 0, coreR, 0, Math.PI * 2);
-            ctx.fillStyle = coreG; ctx.fill();
-            ctx.lineWidth = 2.5; ctx.strokeStyle = '#090d16'; ctx.stroke();
-
-            // 5. 原画贴纸与丝网印刷（左上街头角标 + 右下涂鸦字）
+        if (img && img.complete && img.naturalWidth > 0) {
             ctx.save();
-            if (isYellowTeal) {
-                // 左上街头贴纸（带翘边立体感）
-                ctx.translate(-R * 0.44, -R * 0.44); ctx.rotate(-0.28);
-                ctx.fillStyle = '#090d16'; ctx.fillRect(-11, -6, 22, 12);
-                ctx.fillStyle = '#ec4899'; ctx.fillRect(-10, -5, 20, 10);
-                ctx.fillStyle = '#fff'; ctx.font = '900 6px monospace'; ctx.textAlign = 'center'; ctx.fillText('MARVIN', 0, 2.5);
-                ctx.restore(); ctx.save();
-                // 右下涂鸦标签
-                ctx.translate(R * 0.35, R * 0.40); ctx.rotate(0.32);
-                ctx.fillStyle = '#fb923c'; ctx.font = '900 italic 8px sans-serif'; ctx.fillText('NO.105', 0, 0);
-            } else {
-                // 工业同心圆环与青色喷漆涂鸦
-                ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 3;
-                ctx.beginPath(); ctx.arc(0, 0, coreR * 0.85, 0, Math.PI * 2); ctx.stroke();
-                ctx.translate(R * 0.32, R * 0.42); ctx.rotate(-0.25);
-                ctx.fillStyle = '#2dd4bf'; ctx.font = '900 italic 9px sans-serif'; ctx.fillText('GRAFFITI', 0, 0);
-            }
+            ctx.rotate(angle); // 贴图随飞盘旋转
+            // 贴图等比铺满飞盘圆周
+            ctx.drawImage(img, -R, -R, R * 2, R * 2);
             ctx.restore();
-
         } else {
-            // ================= 陷阱盘（鱼字款：完全复刻金属+45°警戒斜纹原画） =================
-            // 1. 厚重铸铁外壳与金属拉丝圈
-            const outG = ctx.createRadialGradient(-R * 0.3, -R * 0.3, 0, 0, 0, R);
-            outG.addColorStop(0.0, '#e2e8f0'); // 顶部高光
-            outG.addColorStop(0.25, '#94a3b8');
-            outG.addColorStop(0.70, '#334155');
-            outG.addColorStop(1.0, '#090d16');
-            ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2);
-            ctx.fillStyle = outG; ctx.fill();
-            ctx.lineWidth = 2.5; ctx.strokeStyle = '#090d16'; ctx.stroke();
-
-            // 2. 凹槽阴影环
-            ctx.strokeStyle = 'rgba(0,0,0,0.85)'; ctx.lineWidth = 3;
-            ctx.beginPath(); ctx.arc(0, 0, R * 0.87, 0, Math.PI * 2); ctx.stroke();
-
-            // 3. 45度高对比工业警示斜纹圈
-            const sR = R * 0.73, sW = R * 0.17;
-            ctx.save();
-            ctx.beginPath();
-            ctx.arc(0, 0, sR + sW / 2, 0, Math.PI * 2);
-            ctx.arc(0, 0, sR - sW / 2, 0, Math.PI * 2, true);
-            ctx.closePath();
-            ctx.clip();
-
-            // 亮黄色基底
-            ctx.fillStyle = '#facc15';
+            // 图片未完成加载时的工业风兜底底色
+            ctx.fillStyle = '#1e293b';
             ctx.fillRect(-R, -R, R * 2, R * 2);
-
-            // 45度纯黑平行粗斜条纹
-            ctx.fillStyle = '#090d16';
-            const gap = 12;
-            for (let x = -R * 3; x < R * 3; x += gap) {
-                ctx.beginPath();
-                ctx.moveTo(x, -R * 2);
-                ctx.lineTo(x + 6, -R * 2);
-                ctx.lineTo(x + 6 + R * 4, R * 2);
-                ctx.lineTo(x + R * 4, R * 2);
-                ctx.closePath();
-                ctx.fill();
-            }
-            ctx.restore();
-
-            // 警戒环双向咬合黑边
-            ctx.strokeStyle = '#090d16'; ctx.lineWidth = 2.2;
-            ctx.beginPath(); ctx.arc(0, 0, sR + sW / 2, 0, Math.PI * 2); ctx.stroke();
-            ctx.beginPath(); ctx.arc(0, 0, sR - sW / 2, 0, Math.PI * 2); ctx.stroke();
-
-            // 4. 下沉式中央深铁灰金属板
-            const plateR = sR - sW / 2 - 2;
-            const plateG = ctx.createRadialGradient(-plateR * 0.3, -plateR * 0.3, 0, 0, 0, plateR);
-            plateG.addColorStop(0.0, '#475569');
-            plateG.addColorStop(0.7, '#1e293b');
-            plateG.addColorStop(1.0, '#090d16');
-            ctx.beginPath(); ctx.arc(0, 0, plateR, 0, Math.PI * 2);
-            ctx.fillStyle = plateG; ctx.fill();
-            ctx.lineWidth = 2.2; ctx.strokeStyle = '#090d16'; ctx.stroke();
-
-            // 金属板内倒角高光弧
-            ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 1.2;
-            ctx.beginPath(); ctx.arc(0, 0, plateR - 1.5, -Math.PI * 0.8, -Math.PI * 0.2); ctx.stroke();
-
-            // 5. 四枚高精度金属紧固螺栓（上下左右 45 度分布）
-            for (let i = 0; i < 4; i++) {
-                const ang = i * Math.PI / 2 + Math.PI / 4;
-                const bx = Math.cos(ang) * (plateR - 6);
-                const by = Math.sin(ang) * (plateR - 6);
-                this.drawMetalFastener(ctx, bx, by, 3, '#94a3b8');
-            }
         }
+        ctx.restore(); // 恢复裁切状态
 
-        ctx.restore(); // 结束盘体旋转
-
-        // ----------------------------------------------------
-        // 6. 全局 3D 凸面球体透镜反光罩（核心：赋予整个飞盘原画级的质感）
-        // ----------------------------------------------------
+        // --- B. 工业机械压圈与防白边黑锁边 ---
         ctx.save();
-        const domeG = ctx.createRadialGradient(-R * 0.35, -R * 0.45, R * 0.05, -R * 0.25, -R * 0.35, R * 0.9);
-        domeG.addColorStop(0.0, 'rgba(255, 255, 255, 0.65)');
-        domeG.addColorStop(0.3, 'rgba(255, 255, 255, 0.20)');
-        domeG.addColorStop(0.7, 'rgba(255, 255, 255, 0.0)');
-        domeG.addColorStop(1.0, 'rgba(0, 0, 0, 0.35)'); // 边缘暗角
-        ctx.beginPath(); ctx.arc(0, 0, R - 1, 0, Math.PI * 2);
-        ctx.fillStyle = domeG; ctx.fill();
+        ctx.strokeStyle = '#090d16';
+        ctx.lineWidth = 2.8;
+        ctx.beginPath();
+        ctx.arc(0, 0, clipRadius, 0, Math.PI * 2);
+        ctx.stroke();
 
-        // 顶部高光月牙弧
-        ctx.beginPath(); ctx.arc(0, 0, R - 4, -Math.PI * 0.82, -Math.PI * 0.18);
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)'; ctx.lineWidth = 3.5; ctx.lineCap = 'round';
+        // 顶部固定方向的高光月牙弧（增加立体凸面感）
+        ctx.beginPath();
+        ctx.arc(0, 0, clipRadius - 2, -Math.PI * 0.82, -Math.PI * 0.18);
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.70)';
+        ctx.lineWidth = 3.2;
+        ctx.lineCap = 'round';
         ctx.stroke();
         ctx.restore();
 
-        // ----------------------------------------------------
-        // 7. 盘心汉字绘制（1:1 复刻设计图字体层级）
-        // ----------------------------------------------------
+        // --- C. 盘心汉字（超粗黑体，占盘径约 58%，双层高对比度） ---
+        // 关键教学逻辑：正确字与错误字使用完全一致的字体描边规则，消除一切外观暗示！
         ctx.save();
-        const fontSize = Math.round(R * 1.32);
+        const fontSize = Math.round(R * 2 * 0.58); // 占直径约 58%
         ctx.font = `900 ${fontSize}px "PingFang SC", "Microsoft YaHei", "Arial Black", sans-serif`;
-        ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.lineJoin = 'round';
 
-        if (isValid) {
-            if (themeVariant === 0) {
-                // 【脑字款】：设计图原画样式（厚黑粗框 + 纯白高亮实芯）
-                ctx.lineWidth = 11; ctx.strokeStyle = '#090d16'; ctx.strokeText(char, 0, 2);
-                ctx.fillStyle = '#ffffff'; ctx.fillText(char, 0, 2);
-            } else {
-                // 【车字款】：设计图原画样式（纯黑重磅字体 + 亮橙内衬，杜绝发暗）
-                ctx.lineWidth = 11; ctx.strokeStyle = '#fed7aa'; ctx.strokeText(char, 0, 2);
-                ctx.lineWidth = 6; ctx.strokeStyle = '#090d16'; ctx.strokeText(char, 0, 2);
-                ctx.fillStyle = '#090d16'; ctx.fillText(char, 0, 2);
-            }
-        } else {
-            // 【鱼字款】：设计图原画样式（3D 浮雕金属立体字）
-            // 底部深黑下沉阴影
-            ctx.lineWidth = 10; ctx.strokeStyle = '#000000'; ctx.strokeText(char, 0, 4);
-            // 顶部银白金属高光描边
-            ctx.lineWidth = 4; ctx.strokeStyle = '#f1f5f9'; ctx.strokeText(char, 0, 1);
-            // 实体金属芯
-            ctx.fillStyle = '#1e293b'; ctx.fillText(char, 0, 3);
-            ctx.fillStyle = '#94a3b8'; ctx.fillText(char, 0, 1.5);
-        }
+        // 纯黑厚实外描边，压制任何复杂贴图底色
+        ctx.lineWidth = 11;
+        ctx.strokeStyle = '#000000';
+        ctx.strokeText(char, 0, 2);
+
+        // 纯白高亮文字芯，确保飞行中毫秒级认字
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(char, 0, 2);
         ctx.restore();
     },
 
     // ----------------------------------------------------
-    // 飞盘 2.5D 空中倾斜与击中顿帧裂纹
+    // 2. 飞盘 2.5D 空中仰角立体化与击中裂纹反馈
     // ----------------------------------------------------
     drawDisc(ctx, disc) {
         const R = disc.radius;
+        // 飞行仰角微调纵向缩放
         const scaleY = 1.0 - 0.16 * Math.min(1.0, Math.abs(disc.normVy) / 320);
-        
+
         ctx.save();
         ctx.translate(disc.x, disc.y);
         ctx.scale(1.0, scaleY);
 
         // 立体底座厚度与投影
-        const lip = (1.0 - scaleY) * 26 + 4.5;
+        const lip = (1.0 - scaleY) * 26 + 4;
         ctx.save();
-        ctx.shadowColor = 'rgba(0, 0, 0, 0.75)'; ctx.shadowBlur = 20; ctx.shadowOffsetY = 10;
-        ctx.beginPath(); ctx.arc(0, lip, R, 0, Math.PI * 2);
-        ctx.fillStyle = !disc.isValid ? '#090d16' : (disc.themeVariant === 0 ? '#0f2937' : '#451000');
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.75)';
+        ctx.shadowBlur = 20;
+        ctx.shadowOffsetY = 10;
+        ctx.beginPath();
+        ctx.arc(0, lip, R * 0.96, 0, Math.PI * 2);
+        ctx.fillStyle = '#090d16';
         ctx.fill();
         ctx.restore();
 
-        // 绘制盘面
-        this.drawDiscFace(ctx, R, disc.isValid, disc.themeVariant, disc.angle, disc.char);
+        // 绘制贴图盘面（传入当前飞盘绑定的 skinIndex）
+        this.drawDiscFace(ctx, R, disc.isValid, disc.themeVariant, disc.angle, disc.char, disc.skinIndex);
 
-        // 击中 3 帧顿帧裂纹
+        // 命中合法字时的 3 帧打击顿帧（Hit-Stop）锯齿碎裂裂纹
         if (disc.hitStopFrames > 0) {
             ctx.save();
-            ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.clip();
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.55)'; ctx.fillRect(-R, -R, R * 2, R * 2);
+            ctx.beginPath();
+            ctx.arc(0, 0, R * 0.96, 0, Math.PI * 2);
+            ctx.clip();
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+            ctx.fillRect(-R, -R, R * 2, R * 2);
+
+            // 白色加粗放射状裂纹
             ctx.strokeStyle = '#090d16'; ctx.lineWidth = 7; ctx.lineCap = 'round';
             const crackAngles = [-0.65, 0.85, 2.40, -2.15];
             crackAngles.forEach((a, i) => {
@@ -1386,7 +1306,7 @@ window.Theme = {
     },
 
     // ----------------------------------------------------
-    // 其余维持现有体系完整运行
+    // 3. 背景蓝图网格
     // ----------------------------------------------------
     drawBackground(ctx, width, height) {
         ctx.fillStyle = '#0b1120'; ctx.fillRect(0, 0, width, height);
@@ -1400,6 +1320,9 @@ window.Theme = {
         ctx.restore();
     },
 
+    // ----------------------------------------------------
+    // 4. 顶部中央关卡母字指示器
+    // ----------------------------------------------------
     drawCenterStageMonitor(ctx, width, activeWordBank, roundTimeLeft, stageIdx) {
         const cx = width / 2, topY = 52;
         ctx.save();
@@ -1433,6 +1356,9 @@ window.Theme = {
         ctx.restore();
     },
 
+    // ----------------------------------------------------
+    // 5. 玩家 HUD (生命与记分板)
+    // ----------------------------------------------------
     drawPlayerHUD(ctx, p, pIdx, width) {
         const isP1 = pIdx === 0, theme = p.color, bright = p.accentColor;
         const isLow = p.hp <= 2;
@@ -1470,6 +1396,7 @@ window.Theme = {
         ctx.restore();
         this.drawHazardStripeBar(ctx, badgeX + 18, topY + badgeH - 22, badgeW - 36, 9, theme);
 
+        // 生命槽
         this.traceChamferRect(ctx, stackX, topY, stackW, lifeH, 8);
         ctx.fillStyle = isLow ? '#3b1d24' : '#334155'; ctx.fill();
         ctx.lineWidth = 2.2; ctx.strokeStyle = isLow ? '#ef4444' : '#090d16'; ctx.stroke();
@@ -1498,6 +1425,7 @@ window.Theme = {
             }
         }
 
+        // 分数板
         const scoreY = topY + lifeH + gap, isFlash = p.scoreFlashTimer > 0;
         this.traceChamferRect(ctx, stackX, scoreY, stackW, scoreH, 8);
         ctx.fillStyle = '#334155'; ctx.fill();
@@ -1517,6 +1445,9 @@ window.Theme = {
         ctx.restore();
     },
 
+    // ----------------------------------------------------
+    // 6. 词组收集框与词条徽章
+    // ----------------------------------------------------
     drawPhraseBadge(ctx, w, h, wordText, pIdx, flash = 0) {
         const isP1 = pIdx === 0, hw = w / 2, hh = h / 2;
         ctx.save();
@@ -1571,6 +1502,9 @@ window.Theme = {
         ctx.restore();
     },
 
+    // ----------------------------------------------------
+    // 7. 发射器与准星
+    // ----------------------------------------------------
     drawLaunchers(ctx, launchers, width, height) {
         launchers.forEach((l, idx) => {
             const isL = idx === 0, theme = isL ? '#e2ff00' : '#d946ef', shift = l.recoil * 14;
