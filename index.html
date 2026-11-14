@@ -1091,7 +1091,13 @@ window.addEventListener('DOMContentLoaded', initCoreEngine);
 <!-- =========================================================================
      模块二：独立可插拔美术层 (window.Theme) - 贴图加载 + 圆形裁切去白边 + 统一字形
      ========================================================================= -->
+<!-- =========================================================================
+     模块二：独立可插拔美术层 (window.Theme) - 全贴图原画驱动版 (母舱 + HUD + 飞盘)
+     ========================================================================= -->
 <script id="art-theme-module">
+// ----------------------------------------------------
+// 0. 预加载全部高清原画切图资源
+// ----------------------------------------------------
 const DISC_SKIN_COUNT = 3;
 const discImages = [];
 for (let i = 1; i <= DISC_SKIN_COUNT; i++) {
@@ -1100,7 +1106,13 @@ for (let i = 1; i <= DISC_SKIN_COUNT; i++) {
     discImages.push(img);
 }
 
+// 预加载母舱与双人 HUD 贴图
+const imgHubTV = new Image(); imgHubTV.src = './assets/hub_tv.png';
+const imgHudP1 = new Image(); imgHudP1.src = './assets/hud_p1.png';
+const imgHudP2 = new Image(); imgHudP2.src = './assets/hud_p2.png';
+
 window.Theme = {
+
     traceChamferRect(ctx, x, y, w, h, c) {
         ctx.beginPath();
         ctx.moveTo(x + c, y); ctx.lineTo(x + w - c, y); ctx.lineTo(x + w, y + c);
@@ -1108,39 +1120,153 @@ window.Theme = {
         ctx.lineTo(x, y + h - c); ctx.lineTo(x, y + c); ctx.closePath();
     },
 
-    drawMetalFastener(ctx, cx, cy, r = 4, col = null) {
-        ctx.save();
-        ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2);
-        ctx.fillStyle = '#1e2229'; ctx.fill();
-        ctx.lineWidth = 1.2; ctx.strokeStyle = col || '#090d16'; ctx.stroke();
-        ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(cx - r * 0.5, cy - r * 0.5); ctx.lineTo(cx + r * 0.5, cy + r * 0.5);
-        ctx.moveTo(cx + r * 0.5, cy - r * 0.5); ctx.lineTo(cx - r * 0.5, cy + r * 0.5);
-        ctx.stroke();
-        ctx.restore();
-    },
+    // ----------------------------------------------------
+    // 1. 顶部中央：词根母舱 (hub_tv.png) + 荧光喷漆母字 + LED 倒计时
+    // ----------------------------------------------------
+    drawCenterStageMonitor(ctx, width, activeWordBank, roundTimeLeft, stageIdx) {
+        const cx = width / 2;
+        // 保持母舱宽高比例（原画约 1.15 : 1）
+        const tvW = 205, tvH = 185;
+        const tvX = cx - tvW / 2, tvY = 42;
 
-    drawHazardStripeBar(ctx, x, y, w, h, col) {
         ctx.save();
-        ctx.beginPath(); ctx.roundRect(x, y, w, h, 2); ctx.clip();
-        ctx.fillStyle = '#0f172a'; ctx.fillRect(x, y, w, h);
-        ctx.fillStyle = col;
-        for (let sx = x - h * 2; sx < x + w + h * 2; sx += 11) {
-            ctx.beginPath();
-            ctx.moveTo(sx, y + h); ctx.lineTo(sx + 5.5, y + h);
-            ctx.lineTo(sx + 5.5 + h, y); ctx.lineTo(sx + h, y);
-            ctx.closePath(); ctx.fill();
+        // 绘制母舱贴图
+        if (imgHubTV.complete && imgHubTV.naturalWidth > 0) {
+            ctx.drawImage(imgHubTV, tvX, tvY, tvW, tvH);
+        } else {
+            // 贴图加载前的工程兜底
+            ctx.fillStyle = '#1e293b';
+            ctx.fillRect(tvX, tvY, tvW, tvH);
         }
-        ctx.strokeStyle = '#090d16'; ctx.lineWidth = 1; ctx.strokeRect(x, y, w, h);
+
+        // --- A. 电视 CRT 荧光屏正中心：激光喷漆母字 ---
+        // 屏幕中心坐标微调（位于母舱上半部）
+        const screenCx = tvX + tvW * 0.495;
+        const screenCy = tvY + tvH * 0.40;
+
+        ctx.save();
+        // 荧光喷漆霓虹绿外发光
+        ctx.shadowColor = '#4ade80';
+        ctx.shadowBlur = 18;
+        ctx.font = '900 56px "PingFang SC", "Microsoft YaHei", "Arial Black", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        // 喷漆深绿阴影底层
+        ctx.fillStyle = '#15803d';
+        ctx.fillText(activeWordBank.base, screenCx + 2, screenCy + 2);
+
+        // 喷漆明亮黄绿表层
+        ctx.fillStyle = '#ccff00';
+        ctx.fillText(activeWordBank.base, screenCx, screenCy);
+        ctx.restore();
+
+        // --- B. 电视底部挂载数字钟：Amber 橙色 LED 倒计时 ---
+        const sec = Math.ceil(Math.max(0, roundTimeLeft));
+        const mm = Math.floor(sec / 60);
+        const ss = (sec % 60).toString().padStart(2, '0');
+        const timeText = `${mm}:${ss}`;
+
+        // 时钟小屏幕中心坐标
+        const clockCx = tvX + tvW * 0.495;
+        const clockCy = tvY + tvH * 0.88;
+
+        ctx.save();
+        ctx.shadowColor = sec <= 15 ? '#ef4444' : '#f97316';
+        ctx.shadowBlur = 10;
+        ctx.fillStyle = sec <= 15 ? '#f87171' : '#fb923c';
+        ctx.font = '900 19px "Courier New", monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(timeText, clockCx, clockCy);
+        ctx.restore();
+
         ctx.restore();
     },
 
-    // 贴图绘制 + 圆形遮罩切除白色背景 + 居中高对比汉字
+    // ----------------------------------------------------
+    // 2. 玩家面板：P1/P2 贴图 (hud_p1 / hud_p2) + 分数 + 墨水血槽
+    // ----------------------------------------------------
+    drawPlayerHUD(ctx, p, pIdx, width) {
+        const isP1 = pIdx === 0;
+        const hudW = 224, hudH = 152;
+        const hudX = isP1 ? 20 : width - 20 - hudW;
+        const hudY = 16;
+        const hudImg = isP1 ? imgHudP1 : imgHudP2;
+
+        ctx.save();
+        // 1. 绘制面板金属底盘贴图
+        if (hudImg.complete && hudImg.naturalWidth > 0) {
+            ctx.drawImage(hudImg, hudX, hudY, hudW, hudH);
+        } else {
+            ctx.fillStyle = '#1e293b';
+            ctx.fillRect(hudX, hudY, hudW, hudH);
+        }
+
+        // 2. SCORE 右上方数显黑框
+        // 映射坐标：位于面板右侧上部
+        const scoreBoxX = hudX + hudW * 0.58;
+        const scoreBoxY = hudY + hudH * 0.22;
+        const scoreBoxW = hudW * 0.35;
+        const scoreBoxH = hudH * 0.25;
+
+        ctx.save();
+        const isFlash = p.scoreFlashTimer > 0;
+        const numColor = isP1 ? (isFlash ? '#ffffff' : '#facc15') : (isFlash ? '#ffffff' : '#f472b6');
+        ctx.shadowColor = isP1 ? '#eab308' : '#d946ef';
+        ctx.shadowBlur = isFlash ? 16 : 8;
+
+        ctx.font = '900 24px "Courier New", monospace';
+        ctx.fillStyle = numColor;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`${p.score}`, scoreBoxX + scoreBoxW / 2, scoreBoxY + scoreBoxH / 2 + 1);
+        ctx.restore();
+
+        // 3. INK / AMMO 墨水管与动态液位
+        // 映射坐标：位于面板右下方黑框
+        const ammoBoxX = hudX + hudW * 0.60;
+        const ammoBoxY = hudY + hudH * 0.64;
+        const ammoBoxW = hudW * 0.32;
+        const ammoBoxH = hudH * 0.24;
+
+        // 玩家当前墨水量（以 200 为满血基准，每格血 25 墨水）
+        const ammoVal = Math.round((p.hp / p.maxHp) * 200);
+
+        ctx.save();
+        // 绘制管内微光墨水填充进度条
+        const fillW = Math.max(0, (p.hp / p.maxHp) * (ammoBoxW - 6));
+        const inkGrad = ctx.createLinearGradient(ammoBoxX + 3, 0, ammoBoxX + 3 + fillW, 0);
+        if (isP1) {
+            inkGrad.addColorStop(0, '#ca8a04'); inkGrad.addColorStop(1, '#facc15');
+        } else {
+            inkGrad.addColorStop(0, '#9333ea'); inkGrad.addColorStop(1, '#e879f9');
+        }
+        ctx.fillStyle = inkGrad;
+        ctx.beginPath();
+        ctx.roundRect(ammoBoxX + 3, ammoBoxY + 3, fillW, ammoBoxH - 6, 3);
+        ctx.fill();
+
+        // 墨水数值数字显示
+        ctx.shadowColor = isP1 ? '#facc15' : '#e879f9';
+        ctx.shadowBlur = 6;
+        ctx.font = '900 20px "Courier New", monospace';
+        ctx.fillStyle = '#ffffff';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`${ammoVal.toString().padStart(3, '0')}`, ammoBoxX + ammoBoxW / 2, ammoBoxY + ammoBoxH / 2);
+        ctx.restore();
+
+        ctx.restore();
+    },
+
+    // ----------------------------------------------------
+    // 3. 飞盘贴图 (disc_1 ~ disc_3) + 圆形去白边 + 统一字形
+    // ----------------------------------------------------
     drawDiscFace(ctx, R, isValid, themeVariant, angle, char, skinIndex = 0) {
         const actualSkin = (skinIndex !== undefined ? skinIndex : (themeVariant || 0)) % DISC_SKIN_COUNT;
         const img = discImages[actualSkin];
-        const clipRadius = R * 0.96; // 核心：按 0.96R 建立裁切圆，切掉 JPG 四角纯白背景
+        const clipRadius = R * 0.96; // 裁切圆，彻底切除 JPG/PNG 四角白边
 
         ctx.save();
         ctx.beginPath();
@@ -1158,7 +1284,7 @@ window.Theme = {
         }
         ctx.restore();
 
-        // 黑色机械锁边
+        // 黑色机械防撞外圈
         ctx.save();
         ctx.strokeStyle = '#090d16';
         ctx.lineWidth = 2.8;
@@ -1192,7 +1318,7 @@ window.Theme = {
         ctx.restore();
     },
 
-    // 2.5D 空中仰角立体化与击中裂纹反馈
+    // 2.5D 空中仰角立体化与击中顿帧裂纹
     drawDisc(ctx, disc) {
         const R = disc.radius;
         const scaleY = 1.0 - 0.16 * Math.min(1.0, Math.abs(disc.normVy) / 320);
@@ -1245,6 +1371,9 @@ window.Theme = {
         ctx.restore();
     },
 
+    // ----------------------------------------------------
+    // 4. 背景蓝图网格
+    // ----------------------------------------------------
     drawBackground(ctx, width, height) {
         ctx.fillStyle = '#0b1120'; ctx.fillRect(0, 0, width, height);
         ctx.save();
@@ -1257,125 +1386,9 @@ window.Theme = {
         ctx.restore();
     },
 
-    drawCenterStageMonitor(ctx, width, activeWordBank, roundTimeLeft, stageIdx) {
-        const cx = width / 2, topY = 52;
-        ctx.save();
-        this.traceChamferRect(ctx, cx - 115, topY - 8, 230, 74, 10);
-        ctx.fillStyle = '#1e293b'; ctx.fill();
-        ctx.lineWidth = 2.5; ctx.strokeStyle = '#e2ff00'; ctx.stroke();
-
-        ctx.fillStyle = '#090d16';
-        ctx.beginPath(); ctx.roundRect(cx - 107, topY - 2, 214, 62, 6); ctx.fill();
-
-        ctx.fillStyle = '#94a3b8'; ctx.font = 'bold 11px monospace'; ctx.textAlign = 'left';
-        ctx.fillText(`STAGE 0${stageIdx + 1}`, cx - 98, topY + 16);
-        ctx.fillStyle = '#38bdf8'; ctx.font = 'bold 11px "PingFang SC", sans-serif';
-        ctx.fillText('目标母字', cx - 98, topY + 34);
-        ctx.fillStyle = '#64748b'; ctx.font = '10px monospace';
-        ctx.fillText(`POOL:${activeWordBank.validList.length}`, cx - 98, topY + 50);
-
-        ctx.save();
-        ctx.shadowColor = '#e2ff00'; ctx.shadowBlur = 10;
-        ctx.fillStyle = '#e2ff00'; ctx.font = '900 38px "PingFang SC", "Microsoft YaHei", sans-serif';
-        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText(`【${activeWordBank.base}】`, cx + 4, topY + 30);
-        ctx.restore();
-
-        const sec = Math.ceil(Math.max(0, roundTimeLeft));
-        ctx.fillStyle = '#94a3b8'; ctx.font = 'bold 10px monospace'; ctx.textAlign = 'right';
-        ctx.fillText('TIME', cx + 98, topY + 16);
-        ctx.fillStyle = sec <= 15 ? '#ef4444' : '#f8fafc';
-        ctx.font = '900 24px "Courier New", monospace';
-        ctx.fillText(`${sec < 10 ? '0' + sec : sec}s`, cx + 98, topY + 44);
-        ctx.restore();
-    },
-
-    drawPlayerHUD(ctx, p, pIdx, width) {
-        const isP1 = pIdx === 0, theme = p.color, bright = p.accentColor;
-        const isLow = p.hp <= 2;
-        const badgeW = 94, badgeH = 104, bridgeW = 10, stackW = 192, lifeH = 47, scoreH = 51, gap = 6, topY = 16;
-        const badgeX = isP1 ? 20 : width - 20 - badgeW;
-        const bridgeX = isP1 ? badgeX + badgeW - 2 : badgeX - bridgeW + 2;
-        const stackX = isP1 ? bridgeX + bridgeW - 2 : bridgeX - stackW + 2;
-
-        ctx.save();
-        ctx.fillStyle = '#1e293b'; ctx.strokeStyle = '#090d16'; ctx.lineWidth = 2;
-        ctx.fillRect(bridgeX, topY + 18, bridgeW, badgeH - 36);
-        ctx.strokeRect(bridgeX, topY + 18, bridgeW, badgeH - 36);
-
-        const casingGrad = ctx.createLinearGradient(badgeX, topY, badgeX, topY + badgeH);
-        casingGrad.addColorStop(0, '#475569'); casingGrad.addColorStop(0.5, '#334155'); casingGrad.addColorStop(1, '#1e293b');
-        this.traceChamferRect(ctx, badgeX, topY, badgeW, badgeH, 9);
-        ctx.fillStyle = casingGrad; ctx.fill(); ctx.lineWidth = 2.5; ctx.strokeStyle = '#090d16'; ctx.stroke();
-        ctx.fillStyle = theme;
-        ctx.fillRect(badgeX + 18, topY + 1, badgeW - 36, 3);
-        ctx.fillRect(badgeX + 16, topY + badgeH - 4, badgeW - 32, 3);
-
-        this.traceChamferRect(ctx, badgeX + 6, topY + 6, badgeW - 12, badgeH - 12, 6);
-        ctx.fillStyle = isP1 ? '#232b1c' : '#281d33'; ctx.fill();
-        ctx.lineWidth = 1.5; ctx.strokeStyle = theme; ctx.stroke();
-
-        this.drawMetalFastener(ctx, badgeX + 12, topY + 12, 3.5, theme);
-        this.drawMetalFastener(ctx, badgeX + badgeW - 12, topY + 12, 3.5, theme);
-        this.drawMetalFastener(ctx, badgeX + 12, topY + badgeH - 12, 3.5, theme);
-        this.drawMetalFastener(ctx, badgeX + badgeW - 12, topY + badgeH - 12, 3.5, theme);
-
-        ctx.save();
-        ctx.shadowColor = theme; ctx.shadowBlur = 10; ctx.fillStyle = theme;
-        ctx.font = '900 40px "Arial Black", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText(p.name, badgeX + badgeW / 2, topY + 46);
-        ctx.restore();
-        this.drawHazardStripeBar(ctx, badgeX + 18, topY + badgeH - 22, badgeW - 36, 9, theme);
-
-        // 生命槽
-        this.traceChamferRect(ctx, stackX, topY, stackW, lifeH, 8);
-        ctx.fillStyle = isLow ? '#3b1d24' : '#334155'; ctx.fill();
-        ctx.lineWidth = 2.2; ctx.strokeStyle = isLow ? '#ef4444' : '#090d16'; ctx.stroke();
-        this.drawMetalFastener(ctx, stackX + 7, topY + 7, 2.5);
-        this.drawMetalFastener(ctx, stackX + stackW - 7, topY + 7, 2.5);
-        this.drawMetalFastener(ctx, stackX + 7, topY + lifeH - 7, 2.5);
-        this.drawMetalFastener(ctx, stackX + stackW - 7, topY + lifeH - 7, 2.5);
-
-        ctx.beginPath(); ctx.roundRect(stackX + 6, topY + 6, stackW - 12, lifeH - 12, 5);
-        ctx.fillStyle = '#090d16'; ctx.fill();
-
-        const segW = 16, segH = 25, segGap = 4.5, segStartX = stackX + 13, segY = topY + (lifeH - segH) / 2;
-        for (let i = 0; i < 8; i++) {
-            const sx = segStartX + i * (segW + segGap);
-            if (i < p.hp) {
-                ctx.save();
-                ctx.fillStyle = isLow ? '#f97316' : theme;
-                ctx.shadowColor = isLow ? '#ef4444' : theme; ctx.shadowBlur = 8;
-                ctx.beginPath(); ctx.roundRect(sx, segY, segW, segH, 3); ctx.fill();
-                ctx.shadowBlur = 0; ctx.fillStyle = 'rgba(255,255,255,0.45)';
-                ctx.fillRect(sx + 4, segY + 3, segW - 8, segH - 6);
-                ctx.restore();
-            } else {
-                ctx.fillStyle = '#161e2e'; ctx.strokeStyle = '#334155'; ctx.lineWidth = 1;
-                ctx.beginPath(); ctx.roundRect(sx, segY, segW, segH, 3); ctx.fill(); ctx.stroke();
-            }
-        }
-
-        // 分数板
-        const scoreY = topY + lifeH + gap, isFlash = p.scoreFlashTimer > 0;
-        this.traceChamferRect(ctx, stackX, scoreY, stackW, scoreH, 8);
-        ctx.fillStyle = '#334155'; ctx.fill();
-        ctx.lineWidth = 2.2; ctx.strokeStyle = isFlash ? bright : '#090d16'; ctx.stroke();
-
-        const scX = stackX + 7, scY = scoreY + 6, scW = stackW - 14, scH = scoreH - 12;
-        ctx.beginPath(); ctx.roundRect(scX, scY, scW, scH, 5);
-        ctx.fillStyle = '#070a12'; ctx.fill();
-        ctx.lineWidth = 1.5; ctx.strokeStyle = isFlash ? bright : theme; ctx.stroke();
-
-        ctx.save();
-        ctx.shadowColor = theme; ctx.shadowBlur = isFlash ? 14 : 6;
-        ctx.fillStyle = isFlash ? bright : theme; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.font = '900 30px "Courier New", monospace';
-        ctx.fillText(`${p.score}`, scX + scW / 2 - 4, scY + scH / 2 + 1);
-        ctx.restore();
-        ctx.restore();
-    },
-
+    // ----------------------------------------------------
+    // 5. 侧边词组收集框与卡牌徽章
+    // ----------------------------------------------------
     drawPhraseBadge(ctx, w, h, wordText, pIdx, flash = 0) {
         const isP1 = pIdx === 0, hw = w / 2, hh = h / 2;
         ctx.save();
@@ -1399,7 +1412,12 @@ window.Theme = {
     },
 
     drawCollectionRack(ctx, p, pIdx, geo) {
-        const { rackX, rackY, rackW, rackH, RACK_SLOT_COUNT } = geo;
+        // 下移卡槽初始 Y 坐标，避开上方全新的高质感 HUD 面板
+        const rackW = 148, rackH = 224;
+        const rackX = pIdx === 0 ? 20 : ctx.canvas.width - 20 - rackW;
+        const rackY = 188;
+        const { RACK_SLOT_COUNT } = geo;
+
         ctx.save();
         ctx.shadowColor = p.color; ctx.shadowBlur = 12;
         ctx.fillStyle = 'rgba(15,23,42,0.84)'; ctx.strokeStyle = p.color; ctx.lineWidth = 2.5;
@@ -1411,25 +1429,31 @@ window.Theme = {
         ctx.fillText(`${p.name} 词组收集槽 (${p.collectedWords.length}/${RACK_SLOT_COUNT})`, rackX + rackW / 2, rackY + 19);
 
         for (let i = 0; i < RACK_SLOT_COUNT; i++) {
-            const sr = geo.getSlotRect(i), item = p.collectedWords[i];
+            const slotStartX = rackX + 10, slotStartY = rackY + 34, slotGap = 46, slotW = rackW - 20, slotH = 42;
+            const sx = slotStartX, sy = slotStartY + i * slotGap;
+            const item = p.collectedWords[i];
+
             if (!item) {
                 ctx.save();
                 ctx.strokeStyle = pIdx === 0 ? 'rgba(226,255,0,0.35)' : 'rgba(217,70,239,0.35)';
-                ctx.setLineDash([5, 4]); ctx.beginPath(); ctx.roundRect(sr.x, sr.y, sr.w, sr.h, 6); ctx.stroke();
+                ctx.setLineDash([5, 4]); ctx.beginPath(); ctx.roundRect(sx, sy, slotW, slotH, 6); ctx.stroke();
                 ctx.setLineDash([]); ctx.fillStyle = ctx.strokeStyle; ctx.font = 'bold 12px monospace';
                 ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-                ctx.fillText(`0${i + 1} EMPTY`, sr.x + sr.w / 2, sr.y + sr.h / 2);
+                ctx.fillText(`0${i + 1} EMPTY`, sx + slotW / 2, sy + slotH / 2);
                 ctx.restore();
             } else {
-                ctx.save(); ctx.translate(sr.x + sr.w / 2, sr.y + sr.h / 2);
+                ctx.save(); ctx.translate(sx + slotW / 2, sy + slotH / 2);
                 const sc = 1.0 + item.flash * 0.08; ctx.scale(sc, sc);
-                this.drawPhraseBadge(ctx, sr.w, sr.h - 2, item.word, pIdx, item.flash);
+                this.drawPhraseBadge(ctx, slotW, slotH - 2, item.word, pIdx, item.flash);
                 ctx.restore();
             }
         }
         ctx.restore();
     },
 
+    // ----------------------------------------------------
+    // 6. 发射台与准星
+    // ----------------------------------------------------
     drawLaunchers(ctx, launchers, width, height) {
         launchers.forEach((l, idx) => {
             const isL = idx === 0, theme = isL ? '#e2ff00' : '#d946ef', shift = l.recoil * 14;
@@ -1500,5 +1524,3 @@ window.Theme = {
     }
 };
 </script>
-</body>
-</html>
